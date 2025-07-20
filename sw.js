@@ -40,10 +40,7 @@ const urlsToCache = [
   './stickers.js',
   './worldSetting.html',
   './worldSetting.js',
-  './contactsPicker.html',
-  // Dexie and Tailwind CSS from CDN
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/dexie/dist/dexie.js'
+  './contactsPicker.html'
 ];
 
 // 安装 Service Worker 并缓存文件

@@ -30,6 +30,7 @@ function initializePlayer(token) {
     player.addListener('ready', ({ device_id }) => {
         deviceId = device_id;
         isPlayerInitialized = true;
+        document.dispatchEvent(new CustomEvent('spotifyLoggedIn'));
     });
 
     player.addListener('not_ready', () => { isPlayerInitialized = false; });
@@ -103,13 +104,14 @@ function logout() {
     localStorage.removeItem('spotify_token_expires_at');
     if(player) player.disconnect();
     isPlayerInitialized = false;
+    document.dispatchEvent(new CustomEvent('spotifyLoggedOut'));
 }
 
 export async function getUserPlaylists() {
     const token = await ensureValidToken();
     if (!token) return [];
     try {
-        const response = await fetch("https://api.spotify.com/v1/me/playlists?limit=50", {
+        const response = await fetch("https://api.spotify.com/v1/me/playlists", {
             headers: { Authorization: `Bearer ${token}` }
         });
         if (!response.ok) return [];
@@ -137,9 +139,7 @@ export async function toggleShuffle(shuffleState) {
 
     fetch(`https://api.spotify.com/v1/me/player/shuffle?state=${shuffleState}&device_id=${deviceId}`, {
         method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Authorization': `Bearer ${token}` },
     });
 }
 
@@ -160,20 +160,44 @@ export function previousTrack() { if (player) player.previousTrack(); }
             redirect_uri: redirectUri,
             code_verifier: verifier,
         });
-        const result = await fetch("https://accounts.spotify.com/api/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: tokenParams
-        }).then(res => res.json());
-        
-        accessToken = result.access_token;
-        const expiresAt = Date.now() + result.expires_in * 1000;
-        localStorage.setItem('spotify_access_token', accessToken);
-        localStorage.setItem('spotify_refresh_token', result.refresh_token);
-        localStorage.setItem('spotify_token_expires_at', expiresAt);
-        window.history.pushState({}, document.title, "./music.html");
+        try {
+            const result = await fetch("https://accounts.spotify.com/api/token", { // **再次直接请求官方API**
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: tokenParams
+            }).then(res => res.json());
+
+            if (result.access_token) {
+                accessToken = result.access_token;
+                const expiresAt = Date.now() + result.expires_in * 1000;
+                localStorage.setItem('spotify_access_token', accessToken);
+                localStorage.setItem('spotify_refresh_token', result.refresh_token);
+                localStorage.setItem('spotify_token_expires_at', expiresAt);
+                
+                //  成功获取token后，移除URL中的参数并尝试引导用户返回PWA**
+                window.history.replaceState({}, document.title, "./music.html");
+                
+                // 给用户一个明确的提示
+                const musicContainer = document.getElementById('music-container');
+                if (musicContainer) {
+                    musicContainer.innerHTML = `
+                        <div class="text-center p-8">
+                            <p class="font-semibold text-lg text-green-600">授权成功！</p>
+                            <p class="text-gray-600 mt-2">请手动切换回 Xphone 应用。</p>
+                            <p class="text-xs text-gray-400 mt-4">(如果PWA没有自动刷新，请手动重启)</p>
+                        </div>
+                    `;
+                }
+            } else {
+                 throw new Error(result.error_description || '获取Token失败');
+            }
+        } catch(error) {
+            console.error("处理回调时出错:", error);
+            alert("登录失败: " + error.message);
+        }
     }
 
+    // 检查并初始化播放器
     const validToken = await ensureValidToken();
     if (validToken && window.Spotify && !isPlayerInitialized) {
         initializePlayer(validToken);
