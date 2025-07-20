@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>角色主页</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+
+    <style>
+        :root { --theme-color: #3b82f6; }
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .header-btn { color: #888888; transition: color 0.2s; }
+        .header-btn:hover { color: var(--theme-color); }
+        .action-btn { background-color: var(--theme-color); }
+    </style>
+</head>
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col bg-white">
+        <header class="bg-white/80 backdrop-blur-md border-b p-4 sticky top-0 z-20">
+            <div class="flex items-center justify-between">
+                <a href="javascript:history.back()" id = "back-btn" class = "header-btn p-1.5 -ml-1.5 rounded-full">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 id="profile-header-title" class="text-base font-semibold text-gray-800"></h1>
+                <a id="profile-edit-btn" href="#" class="header-btn p-1.5 -mr-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                </a>
+            </div>
+        </header>
+
+        <main class="flex-grow p-6 space-y-6">
+            <div class="flex items-center gap-4">
+                <img id="profile-avatar" class="w-20 h-20 rounded-full object-cover shadow-md">
+                <div>
+                    <h2 id="profile-remark" class="text-2xl font-bold text-gray-900"></h2>
+                    <p id="profile-real-name" class="text-sm text-gray-500"></p>
+                    <div id="profile-favorability-container" class="flex items-center gap-2 mt-1">
+                        <span class="text-sm text-gray-600" style="color: var(--theme-color);">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-suit-heart-fill" viewBox="0 0 16 16">
+                            <path d="M4 1c2.21 0 4 1.755 4 3.92C8 2.755 9.79 1 12 1s4 1.755 4 3.92c0 3.263-3.234 4.414-7.608 9.608a.513.513 0 0 1-.784 0C3.234 9.334 0 8.183 0 4.92 0 2.755 1.79 1 4 1"/>
+                            </svg>
+                        </span>
+                        <span id="profile-favorability-score" class="font-medium text-lg" style="color: var(--theme-color);"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-4 pt-4 border-t">
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-500">年龄</span>
+                    <span id="profile-age" class="font-medium"></span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-500">星座</span>
+                    <span id="profile-zodiac" class="font-medium"></span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-500">性别</span>
+                    <span id="profile-gender" class="font-medium"></span>
+                </div>
+                 <div class="flex justify-between items-center">
+                    <span class="text-gray-500">分组</span>
+                    <span id="profile-group" class="font-medium"></span>
+                </div>
+            </div>
+
+            <div class="border-t pt-6">
+                <a id="view-posts-btn" href="#" class="block p-4 bg-gray-50 rounded-lg text-center font-medium text-gray-700 hover:bg-gray-100">
+                    动态
+                </a>
+                <a id="view-memories-btn" href="#" class="block p-4 bg-gray-50 rounded-lg text-center font-medium text-gray-700 hover:bg-gray-100">
+                    回忆
+                </a>
+            </div>
+            
+            <div class="fixed bottom-10 left-0 right-0 px-6">
+                 <button id="send-message-btn" class="w-full p-3 rounded-lg text-white font-bold action-btn shadow-lg">发消息</button>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        // settings.js
+        // Import the shared database instance from db.js
+        import { db } from './db.js';
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const charId = urlParams.get('id');
+            const backBtn = document.getElementById('back-btn');
+
+            if (document.referrer.includes('charEditProfile.html')) {
+            // 如果是从编辑页来的，就强制返回到联系人列表
+                backBtn.href = 'contacts.html';
+            } else if (document.referrer.includes('moments.html')) {
+                backBtn.href = 'contacts.html';
+            } else if (document.referrer.includes('memories.html')) {
+                backBtn.href = 'contacts.html';
+            } else {
+                // 否则，使用默认的浏览器后退功能
+                backBtn.href = 'javascript:history.back()';
+            }
+            
+            if (!charId) {
+                alert('未找到角色信息');
+                window.location.href = 'chat.html';
+                return;
+            }
+
+            const chat = await db.chats.get(charId);
+            if (!chat) {
+                alert('角色不存在');
+                window.location.href = 'chat.html';
+                return;
+            }
+
+            // --- 主题色应用逻辑 ---
+            let themeColor = '#3b82f6'; // 默认颜色
+            const bubbleThemes = [ // 预设主题列表
+                { name: '默认', value: 'default', colors: { userBg: '#dcf8c6' } },
+                { name: '粉蓝', value: 'pink_blue', colors: { userBg: '#eff7ff' } },
+                { name: '蓝白', value: 'blue_white', colors: { userBg: '#eff7ff' } },
+                { name: '紫黄', value: 'purple_yellow', colors: { userBg: '#fffde4' } },
+                { name: '黑白', value: 'black_white', colors: { userBg: '#343a40' } },
+            ];
+            
+            // 1. 获取角色的主题设置
+            const charThemeSetting = chat.settings?.theme;
+            let finalThemeColors = null;
+            
+            // 2. 优先判断是否为自定义颜色对象
+            if (typeof charThemeSetting === 'object' && charThemeSetting !== null) {
+                finalThemeColors = charThemeSetting;
+            } else if (typeof charThemeSetting === 'string') {
+                const customPresets = await db.bubbleThemePresets.toArray();
+                const allPresets = [...bubbleThemes, ...customPresets.map(p => ({ value: p.name, colors: p.colors }))];
+                const preset = allPresets.find(t => t.value === charThemeSetting);
+                if (preset) finalThemeColors = preset.colors;
+            }
+            
+            if (finalThemeColors) {
+                // 读取在聊天室中保存的主题色源偏好 (user/ai)
+                const themeSource = localStorage.getItem('chatAccentThemeSource') || 'user';
+                themeColor = (themeSource === 'ai') ? finalThemeColors.aiBg : finalThemeColors.userBg;
+            } else {
+                // 如果角色没有主题，则回退到全局主题色
+                const globalSettings = await db.globalSettings.get('main');
+                if (globalSettings?.themeColor) {
+                    themeColor = globalSettings.themeColor;
+                }
+            }
+
+            // 5. 应用最终的主题色
+            document.documentElement.style.setProperty('--theme-color', themeColor);
+            // --- DOM Elements ---
+            const headerTitle = document.getElementById('profile-header-title');
+            const avatar = document.getElementById('profile-avatar');
+            const remark = document.getElementById('profile-remark');
+            const realName = document.getElementById('profile-real-name');
+            const birthday = document.getElementById('profile-birthday');
+            const zodiac = document.getElementById('profile-zodiac');
+            const gender = document.getElementById('profile-gender');
+            const group = document.getElementById('profile-group');
+            const editBtn = document.getElementById('profile-edit-btn');
+            const viewPostsBtn = document.getElementById('view-posts-btn');
+            const viewMemoriesBtn = document.getElementById('view-memories-btn');
+            const sendMessageBtn = document.getElementById('send-message-btn');
+            
+            // --- Render Logic ---
+            headerTitle.textContent = chat.name || chat.realName;
+            avatar.src = chat.settings.aiAvatar || 'https://files.catbox.moe/kkll8p.svg';
+            remark.textContent = chat.name || chat.realName;
+            realName.textContent = `名字: ${chat.realName}`;
+
+            const favorabilityScoreEl = document.getElementById('profile-favorability-score');
+            const relationship = await db.relationships.where({ sourceCharId: charId, targetCharId: 'user' }).first();
+            const score = relationship ? relationship.score : 0; // 如果没有记录，默认为0
+            favorabilityScoreEl.textContent = score;
+            
+            const ageSpan = document.getElementById('profile-age'); // 获取新的年龄span
+
+            if (chat.birthday) {
+                // 使用 substring(5) 截取 'YYYY-MM-DD' 中的 'MM-DD'部分
+                const birthDate = new Date(chat.birthday);
+                const today = new Date();
+                let age = today.getFullYear() - birthDate.getFullYear();
+                const monthDiff = today.getMonth() - birthDate.getMonth();
+                // 如果月份还没到，或者月份到了但日子还没到，年龄减一
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                    age--;
+                }
+                ageSpan.textContent = age > 0 ? `${age} 岁` : '未满1岁'; // 显示计算出的年龄
+
+                const [year, month, day] = chat.birthday.split('-').map(Number);
+                const zodiacSigns = ["摩羯座", "水瓶座", "双鱼座", "白羊座", "金牛座", "双子座", "巨蟹座", "狮子座", "处女座", "天秤座", "天蝎座", "射手座", "摩羯座"];
+                const signDates = [20, 19, 21, 20, 21, 22, 23, 23, 23, 24, 23, 22];
+                zodiac.textContent = day < signDates[month - 1] ? zodiacSigns[month - 1] : zodiacSigns[month];
+            } else {
+                ageSpan.textContent = "未知";
+                zodiac.textContent = "未知";
+            }
+            
+            const genderMap = { 'male': '男', 'female': '女', 'unspecified': '未设置' };
+            gender.textContent = genderMap[chat.gender || 'unspecified'];
+
+            if (chat.groupId) {
+                const groupData = await db.xzoneGroups.get(chat.groupId);
+                group.textContent = groupData ? groupData.name : "未分组";
+            } else {
+                group.textContent = "未分组";
+            }
+
+            // --- Event Listeners ---
+            editBtn.href = `charEditProfile.html?id=${charId}`;
+            viewPostsBtn.href = `moments.html?authorId=${charId}`;
+            viewMemoriesBtn.href = `memories.html?authorId=${charId}&backTo=charProfile`;
+            sendMessageBtn.addEventListener('click', () => {
+                // Change this line to point to the new chat room
+                window.location.href = `chatRoom.html?id=${charId}`; 
+            });
+                    
+        });
+    </script>
+</body>
+</html>

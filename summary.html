@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>离线简报</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+</head>
+<body class="bg-gray-100">
+    <div class="w-full h-screen mx-auto flex flex-col">
+        <header class="app-header p-4">
+            <div class="flex items-center justify-between relative">
+                <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800">离线简报</h1>
+                <div class="w-6"></div>
+            </div>
+        </header>
+
+        <main id="summary-container" class="flex-grow p-4 overflow-y-auto space-y-4">
+            </main>
+    </div>
+
+    <script type="module">
+        import { db } from './db.js';
+
+        const container = document.getElementById('summary-container');
+
+        async function renderSummary() {
+            const summaries = await db.offlineSummary.toArray();
+
+            if (summaries.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-16">在你离开的这段时间，世界似乎很平静。</p>';
+                return;
+            }
+
+            container.innerHTML = summaries.map(groupSummary => `
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-800 border-b pb-2 mb-3">在【${groupSummary.id}】发生的事:</h2>
+                    <ul class="list-disc list-inside space-y-2 text-gray-700">
+                        ${groupSummary.events.map(event => `<li>${event}</li>`).join('')}
+                    </ul>
+                </div>
+            `).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', renderSummary);
+    </script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>设置</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+
+    <style>
+        :root {
+            /* 默认主题色，会被JS覆盖 */
+            --theme-color: #3b82f6; 
+            --theme-color-hover: #2563eb;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* 动态主题色应用 */
+        .secondary-btn:hover {
+            border-color: var(--theme-color);
+            color: var(--theme-color);
+        }
+        .form-input:focus {
+            border-color: var(--theme-color) !important;
+            box-shadow: 0 0 0 1px var(--theme-color) !important;
+            outline: none;
+        }
+        input[type="checkbox"]:checked {
+            background-color: var(--theme-color);
+            border-color: var(--theme-color);
+        }
+
+        .header-btn {
+        color: #888888; /* 默认灰色 */
+            transition: color 0.2s ease-in-out;
+        }
+
+        .header-btn:hover {
+            color: var(--theme-color); /* 鼠标悬停时显示主题色 */
+        }
+
+        /* 用于 chat.html 的+号按钮，在下拉菜单显示时保持高亮 */
+        .header-btn.active {
+            color: var(--theme-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col bg-gray-50">
+        <!-- 头部 -->
+        <header class="bg-white/80 backdrop-blur-md border-b border-gray-200 p-4 sticky top-0 z-20">
+            <div class="flex items-center justify-between">
+                <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                </a>
+                
+                <h1 class="text-base font-semibold text-gray-800">设置</h1>
+                
+                <button id="save-all-settings-btn" class="header-btn text-sm font-semibold px-2 py-1">保存</button>
+            </div>
+        </header>
+
+        <!-- 设置内容区 -->
+        <main class="flex-grow p-4 overflow-y-auto">
+            <div class="space-y-6">
+
+                <!-- API 设置 -->
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-3 mb-4">API 连接</h2>
+                    <div class="space-y-4">
+                        <p class="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                            提示: 若要使用“发送图片”功能, 请务必选择支持Vision(视觉)的模型, 如<code class="bg-gray-200 text-red-600 font-mono px-1 rounded">gpt-4o</code>或<code class="bg-gray-200 text-red-600 font-mono px-1 rounded">gpt-4-vision-preview</code>。
+                        </p>
+                        <div>
+                            <label for="proxy-url" class="block text-sm font-medium text-gray-700 mb-1">API 地址 (反代)</label>
+                            <input type="text" id="proxy-url" class="form-input block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2">
+                        </div>
+                        <div>
+                            <label for="api-key" class="block text-sm font-medium text-gray-700 mb-1">API 密钥</label>
+                            <input type="password" id="api-key" class="form-input block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2" placeholder="sk-...">
+                        </div>
+                        <div>
+                            <label for="model-select" class="block text-sm font-medium text-gray-700 mb-1">模型</label>
+                            <div class="flex gap-2">
+                                <select id="model-select" class="form-input block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2"></select>
+                                <button id="fetch-models-btn" class="secondary-btn flex-shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 border border-gray-300 rounded-md shadow-sm transition-colors">拉取</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 后台活动设置 -->
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-3 mb-4">后台活动</h2>
+                    <div class="space-y-4">
+                        <div class="relative flex items-start">
+                            <div class="flex h-6 items-center">
+                                <input id="background-activity-switch" type="checkbox" class="h-4 w-4 rounded border-gray-300">
+                            </div>
+                            <div class="ml-3 text-sm leading-6">
+                                <label for="background-activity-switch" class="font-medium text-gray-900">启用后台角色活动</label>
+                                <p class="text-xs text-theme">警告：此功能会显著增加API调用和费用！</p>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="background-interval-input" class="block text-sm font-medium text-gray-700">后台活动检测间隔 (秒)</label>
+                            <input type="number" id="background-interval-input" value="60" min="30" class="form-input mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2">
+                            <p class="mt-2 text-xs text-gray-500">建议值 60-300。值越大，费用越低，但角色反应越慢。</p>
+                        </div>
+                        <div>
+                            <label for="block-cooldown-input" class="block text-sm font-medium text-gray-700">AI被拉黑后冷静期 (小时)</label>
+                            <input type="number" id="block-cooldown-input" value="1" min="0.1" step="0.1" class="form-input mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2">
+                            <p class="mt-2 text-xs text-gray-500">被拉黑超过这个时间后，AI才有几率重新申请好友。</p>
+                        </div>
+                    </div>
+                </section>
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-3 mb-4">通知</h2>
+                    <div class="space-y-4">
+                       <button id="enable-notifications-btn" class="secondary-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 border border-gray-300 rounded-md shadow-sm transition-colors">启用桌面通知</button>
+                        <p class="mt-2 text-xs text-gray-500">当角色在后台主动给您发消息时，您会收到类似手机的推送通知。需要您的浏览器授权。</p>
+                    </div>
+                </section>
+
+                <!-- 数据管理 -->
+                 <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-3 mb-4">数据管理</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                         <button id="export-data-btn" class="secondary-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 border border-gray-300 rounded-md shadow-sm transition-colors">导出数据</button>
+                         <button id="import-btn" class="secondary-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 border border-gray-300 rounded-md shadow-sm transition-colors">导入备份</button>
+                         <input id="import-data-input" type="file" accept="application/json" class="hidden">
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- 引入外部JS文件 -->
+    <script type="module" src="settings.js" defer></script>
+</body>
+</html>

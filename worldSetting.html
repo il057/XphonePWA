@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>世界设定</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script type="module" src="applyGlobalStyles.js" defer></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+
+    <style>
+        :root {
+            --theme-color: #3b82f6;
+            --theme-color-hover: #2563eb;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .header-btn { color: #888; transition: color 0.2s; }
+        .header-btn:hover { color: var(--theme-color); }
+        .form-input:focus, select:focus {
+            border-color: var(--theme-color) !important;
+            box-shadow: 0 0 0 1px var(--theme-color) !important;
+            outline: none;
+        }
+        .primary-btn { background-color: var(--theme-color); }
+        .primary-btn:hover { background-color: var(--theme-color-hover); }
+    </style>
+</head>
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col bg-gray-50">
+        <header class="bg-white/80 backdrop-blur-md border-b border-gray-200 p-4 sticky top-0 z-20">
+            <div class="flex items-center justify-between">
+                <a href="me.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800">世界设定</h1>
+                <button id="save-settings-btn" class="header-btn text-sm font-semibold px-2 py-1">保存</button>
+            </div>
+        </header>
+
+        <main class="flex-grow p-4 overflow-y-auto">
+            <div class="space-y-6">
+
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 border-b pb-3 mb-4">离线模拟与情报</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="offline-sim-hours" class="block text-sm font-medium text-gray-700">离线模拟检查间隔 (小时)</label>
+                            <input type="number" id="offline-sim-hours" class="form-input mt-1 block w-full" value="1" min="0.5" step="0.5">
+                            <p class="text-xs text-gray-500 mt-1">当您离线超过此时间，AI将模拟这段时间内发生的故事。</p>
+                        </div>
+                        <div>
+                            <label for="intel-cooldown-minutes" class="block text-sm font-medium text-gray-700">情报更新冷却 (分钟)</label>
+                            <input type="number" id="intel-cooldown-minutes" class="form-input mt-1 block w-full" value="5" min="1">
+                            <p class="text-xs text-gray-500 mt-1">进入私聊时，距离上次搜集情报超过这个时间，才会重新搜集。</p>
+                        </div>
+                        <div>
+                            <label for="info-scan-range" class="block text-sm font-medium text-gray-700">情报网扫描范围 (条)</label>
+                            <input type="number" id="info-scan-range" class="form-input mt-1 block w-full" value="50" min="10" step="10">
+                            <p class="text-xs text-gray-500 mt-1">角色在私聊前，会扫描最近多少条其他聊天记录来搜集情报。</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 border-b pb-3 mb-4">分组管理</h2>
+                    <div id="groups-management-container" class="space-y-4">
+                        </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <div id="worldbook-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-30 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-sm max-h-[80vh] flex flex-col">
+            <h3 class="text-lg font-semibold text-center p-4 border-b">为 <span id="modal-group-name" class="font-bold"></span> 关联世界书</h3>
+            <div id="worldbook-list" class="p-4 overflow-y-auto flex-grow">
+                </div>
+            <div class="p-2 border-t flex justify-end gap-2">
+                <button id="cancel-worldbook-btn" class="px-4 py-2 bg-gray-200 rounded-md">取消</button>
+                <button id="save-worldbook-btn" class="px-4 py-2 text-white primary-btn rounded-md">保存关联</button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module" src="worldSetting.js" defer></script>
+</body>
+</html>

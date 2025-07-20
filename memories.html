@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>我们的回忆</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <link rel="stylesheet" href="sharedStyles.css">
+
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+
+    <style>
+         :root { --theme-color: #3b82f6; }
+        body { font-family: 'Inter', sans-serif; }
+         .header-btn { color: #888888; transition: color 0.2s ease-in-out; }
+        .header-btn:hover { color: var(--theme-color); }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+    <div class="w-full h-screen mx-auto flex flex-col bg-white">
+        <header class="bg-white border-b border-gray-200 p-4 sticky top-0 z-10">
+            <div class="flex items-center justify-between relative">
+                <a href="me.html" class="header-btn w-10 text-left">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center whitespace-nowrap">我们的回忆</h1>
+                <div class="w-10 text-right" id="filter-btn-container">
+                    <button id="filter-btn" class="header-btn inline-block">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main id="memories-list" class="flex-grow overflow-y-auto p-4 space-y-4">
+            </main>
+    </div>
+
+    <div id="filter-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-20 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-xs p-4">
+            <h3 class="font-semibold text-lg mb-4">筛选回忆</h3>
+            <select id="char-filter-select" class="w-full p-2 border rounded-md">
+                <option value="all">显示全部</option>
+                </select>
+            <div class="flex justify-end gap-2 mt-4">
+                <button id="cancel-filter" class="px-4 py-2 bg-gray-200 rounded-md">取消</button>
+                <button id="apply-filter" class="px-4 py-2 text-white rounded-md" style="background-color: var(--theme-color);">应用</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-20 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-sm p-4">
+            <h3 class="font-semibold text-lg mb-4">编辑日记</h3>
+            <textarea id="edit-textarea" class="w-full p-2 border rounded-md" rows="5"></textarea>
+            <div class="flex justify-end gap-2 mt-4">
+                <button id="cancel-edit" class="px-4 py-2 bg-gray-200 rounded-md">取消</button>
+                <button id="save-edit" class="px-4 py-2 text-white rounded-md" style="background-color: var(--theme-color);">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="memories.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>动态</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+
+    <style>
+        .image-desc-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 1 / 1;
+            width: 100%;
+            background-color: #f0f2f5;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            text-align: center;
+            color: #6b7280;
+            font-style: italic;
+        }
+        .action-icon.active svg {
+            color: var(--theme-color, #3b82f6);
+        }
+        .dropdown-menu {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 0.5rem;
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            z-index: 50;
+            overflow: hidden;
+            width: 100px;
+        }
+        .dropdown-menu-item {
+            display: block;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: #374151;
+            text-decoration: none;
+            transition: background-color 0.15s ease-in-out;
+        }
+        .dropdown-menu-item:hover {
+            background-color: #f3f4f6;
+        }
+
+        .action-icon svg {
+            color: var(--theme-color);
+        }
+        .action-icon.active svg {
+            fill: var(--theme-color);
+        }
+
+        .custom-select-container {
+            border: 1px solid #d1d5db; /* gray-300 */
+            border-radius: 0.5rem; /* rounded-lg */
+            overflow: hidden;
+            transition: all 0.2s ease-in-out;
+        }
+        .custom-select-button {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background-color: #f9fafb; /* gray-50 */
+            text-align: left;
+            font-size: 0.875rem;
+            color: #374151; /* gray-700 */
+            cursor: pointer;
+        }
+        .custom-select-button:hover {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        .custom-select-button svg {
+            transition: transform 0.2s ease-in-out;
+        }
+        .custom-select-dropdown {
+            display: none; /* Hidden by default */
+            background: white;
+            padding: 0.5rem;
+            max-height: 150px;
+            overflow-y: auto;
+            border-top: 1px solid #e5e7eb;
+        }
+        .custom-select-dropdown.visible {
+            display: block; /* Show when active */
+        }
+        .custom-select-option {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            cursor: pointer;
+            border-radius: 0.375rem;
+        }
+        .custom-select-option:hover {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        .custom-select-option input[type="checkbox"] {
+            cursor: pointer;
+            accent-color: var(--theme-color);
+            margin-right: 0.75rem;
+        }
+        .custom-select-option label {
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .at-mention-popup {
+            position: absolute;
+            bottom: 100%; /* 显示在输入框上方 */
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            max-height: 120px;
+            overflow-y: auto;
+            z-index: 10;
+            display: none; /* 默认隐藏 */
+        }
+        .at-mention-item {
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+        }
+        .at-mention-item:hover {
+            background-color: #f3f4f6;
+        }
+        .mentioned-users-display {
+            font-size: 0.75rem; /* 12px */
+            color: #6b7280; /* gray-500 */
+            margin-bottom: 0.5rem; /* 8px */
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="w-full h-screen mx-auto flex flex-col">
+        <header class="app-header p-4">
+            <div class="flex items-center justify-between relative">
+                 <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800"></h1>
+                <div class="relative">
+                    <button id="add-btn" class="header-btn p-1.5 -mr-1.5 rounded-full">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                    </button>
+                     <div id="add-menu" class="dropdown-menu hidden">
+                        <a href="#" class="dropdown-menu-item" data-type="text">写动态</a>
+                        <a href="#" class="dropdown-menu-item" data-type="image">发照片</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow main-content overflow-y-auto">
+            <div class="relative h-48 bg-gray-300">
+                <div id="cover-photo" class="w-full h-full object-cover bg-cover bg-center"></div>
+                <div class="absolute -bottom-8 right-4">
+                    <div class="flex items-end space-x-3">
+                        <div class="text-right">
+                           <p id="user-name" class="text-white font-bold text-lg" style="text-shadow: 1px 1px 3px rgba(0,0,0,0.5);"></p>
+                           <p id="user-signature" class="text-white text-sm mt-1" style="text-shadow: 1px 1px 3px rgba(0,0,0,0.5);"></p>
+                        </div>
+                        <img id="user-avatar" src="https://files.catbox.moe/kkll8p.svg" class="w-16 h-16 rounded-lg object-cover border-2 border-white">
+                    </div>
+                </div>
+            </div>
+            <div id="posts-feed" class="pt-12 p-4 space-y-4">
+                <p class="text-center text-gray-500">正在加载动态...</p>
+            </div>
+        </main>
+        
+        <footer class="app-dock">
+             <div class="grid grid-cols-4 gap-4 text-center text-xs font-medium">
+                <a href="chat.html" class="dock-item flex flex-col items-center"><span>聊天</span></a>
+                <a href="contacts.html" class="dock-item flex flex-col items-center"><span>通讯录</span></a>
+                <a href="moments.html" class="dock-item active flex flex-col items-center"><span>动态</span></a>
+                <a href="me.html" class="dock-item flex flex-col items-center"><span>我</span></a>
+            </div>
+        </footer>
+        
+    </div>
+
+    <div id="create-post-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 max-w-sm">
+            <h3 id="modal-title" class="text-lg font-semibold mb-4">分享新鲜事</h3>
+            <div class="space-y-4">
+                <textarea id="post-public-text" class="w-full p-2 border rounded-md" rows="3" placeholder="说点什么吧..."></textarea>
+                <div id="image-desc-group" class="hidden">
+                     <textarea id="post-image-description" class="w-full p-2 border rounded-md" rows="2" placeholder="图片描述 (必填，给AI看的)"></textarea>
+                </div>
+                <div class="custom-select-container">
+                    <button type="button" id="open-visibility-selector" class="custom-select-button">
+                        <span id="visibility-selector-text">谁可以看 (默认公开)</span>
+                        <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <div id="visibility-selector-dropdown" class="custom-select-dropdown">
+                        </div>
+                </div>
+
+                <div class="custom-select-container mt-4">
+                    <button type="button" id="open-mention-selector" class="custom-select-button">
+                        <span id="mention-selector-text">提醒谁看 (可选)</span>
+                        <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <div id="mention-selector-dropdown" class="custom-select-dropdown">
+                        </div>
+                </div>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button id="cancel-create-post" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">取消</button>
+                <button id="confirm-create-post" class="px-4 py-2 text-white rounded-md ml-3" style="background-color: var(--theme-color);">发布</button>
+            </div>
+        </div>
+    </div>
+    
+<script type="module">
+    import { db } from './db.js';
+
+    // 固定ID，用于区分“当前用户”，而不是依赖易变的昵称
+    const CURRENT_USER_ID = 'user';
+
+    // --- DOM Elements ---
+    const feedContainer = document.getElementById('posts-feed');
+    const postModal = document.getElementById('create-post-modal');
+    const addMenu = document.getElementById('add-menu');
+    const addBtn = document.getElementById('add-btn');
+
+    // --- Global State ---
+    const defaultAvatar = 'https://files.catbox.moe/kkll8p.svg';
+    let allChats = {};
+    let displayPersona = null; // 用于存储当前用户的活动人格
+    let themeColor = '#3b82f6';
+    let currentPostPayload = {}; // 用于创建动态时的临时数据
+
+    /**
+     * 名称解析助手函数
+     * 根据ID获取当前正确的显示名称，解决了名称不同步的问题。
+     * @param {string} id - 'user' 或 角色ID
+     * @returns {string} - 正确的显示名称
+     */
+    function getDisplayName(id) {
+        if (id === CURRENT_USER_ID) {
+            return displayPersona?.name || '我';
+        }
+        return allChats[id]?.name || id; // 如果找不到，则回退显示ID
+    }
+
+    /**
+     * 更新单个动态的UI（点赞、评论等），现在完全基于ID
+     * @param {HTMLElement} postEl - 动态的DOM元素
+     * @param {object} post - 最新的动态数据对象
+     * @param {object} options - 包含 isFavorited 等状态
+     */
+    function updatePostUI(postEl, post, options) {
+        const { isFavorited } = options;
+        const likeIcon = postEl.querySelector('.action-icon.like');
+        const favoriteIcon = postEl.querySelector('.action-icon.favorite');
+        
+        const isLikedByUser = post.likes && post.likes.includes(CURRENT_USER_ID);
+
+        if (likeIcon) {
+            likeIcon.classList.toggle('active', isLikedByUser);
+            likeIcon.querySelector('svg').setAttribute('fill', isLikedByUser ? 'currentColor' : 'none');
+        }
+        if (favoriteIcon) {
+            favoriteIcon.classList.toggle('active', isFavorited);
+            favoriteIcon.querySelector('svg').setAttribute('fill', isFavorited ? 'currentColor' : 'none');
+        }
+
+        const likesContainer = postEl.querySelector('.likes-container');
+        if (likesContainer) {
+            const likedNames = (post.likes || []).map(getDisplayName);
+            if (likedNames.length) {
+                likesContainer.textContent = `♥ ${likedNames.join(', ')}`;
+                likesContainer.classList.remove('hidden');
+            } else {
+                likesContainer.classList.add('hidden');
+            }
+        }
+
+        const commentsContainer = postEl.querySelector('.comments-container');
+        if (commentsContainer) {
+            commentsContainer.innerHTML = (post.comments || []).map(c => {
+                const authorName = getDisplayName(c.author);
+                
+                // 将评论文本中的 @[user:ID] 格式替换为高亮的 @显示名称
+                const renderedText = c.text.replace(/@\[user:([^\]]+)\]/g, (match, id) => {
+                    return `<strong class="font-medium" style="color:var(--theme-color);">@${getDisplayName(id)}</strong>`;
+                });
+
+                // 组合最终的评论HTML，不再有“回复”字样
+                const commentHtml = `<div class="text-sm"><strong class="font-medium" style="color:var(--theme-color);">${authorName}:</strong> ${renderedText}</div>`;
+                
+                return commentHtml;
+            }).join('');
+        }
+
+        const feedbackContainer = postEl.querySelector('.post-feedback');
+        if (feedbackContainer) {
+            const showFeedback = (post.likes && post.likes.length > 0) || (post.comments && post.comments.length > 0);
+            feedbackContainer.classList.toggle('hidden', !showFeedback);
+        }
+    }
+    
+    function formatPostTimestamp(timestamp) {
+        const now = new Date();
+        const date = new Date(timestamp);
+        const diffMs = now - date;
+        const diffMinutes = Math.round(diffMs / 1000 / 60);
+
+        if (diffMinutes < 1) return '刚刚';
+        if (diffMinutes < 60) return `${diffMinutes}分钟前`;
+        if (now.toDateString() === date.toDateString()) return `今天 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+        return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    }
+    
+    async function renderPosts() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const authorId = urlParams.get('authorId');
+
+        const headerTitle = document.querySelector('h1');
+        const addBtnContainer = document.getElementById('add-btn').parentElement;
+        const feedContainer = document.getElementById('posts-feed');
+        const appDock = document.querySelector('.app-dock');
+        const backBtn = document.querySelector('.app-header a');
+                    
+        feedContainer.innerHTML = '<p class="text-center text-gray-500">正在加载动态...</p>';
+
+        if (authorId) {
+            appDock.classList.add('hidden');
+            addBtnContainer.classList.add('hidden');
+        } else {
+            appDock.classList.remove('hidden');
+            addBtnContainer.classList.remove('hidden');
+        }
+
+        const allSortedPosts = await db.xzonePosts.orderBy('timestamp').reverse().toArray();
+        const postsToRender = authorId ? allSortedPosts.filter(p => p.authorId === authorId) : allSortedPosts;
+
+        const [chats, personas, globalSettings, favorites, customPresets] = await Promise.all([
+            db.chats.toArray(),
+            db.personaPresets.toArray(),
+            db.globalSettings.get('main'),
+            db.favorites.where('type').equals('xzone_post').toArray(),
+            db.bubbleThemePresets.toArray()
+        ]);
+
+        if (globalSettings && globalSettings.themeColor) {
+            themeColor = globalSettings.themeColor;
+            document.documentElement.style.setProperty('--theme-color', themeColor);
+        }
+
+        allChats = chats.reduce((map, chat) => { map[chat.id] = chat; return map; }, {});
+        const favoritedPostIds = new Set(favorites.map(fav => fav.content.id));
+        
+        const defaultPersonaId = globalSettings?.defaultPersonaId;
+        if (defaultPersonaId) {
+            displayPersona = personas.find(p => p.id === defaultPersonaId);
+        }
+
+        const coverPhotoDiv = document.getElementById('cover-photo');
+        const userSignatureEl = document.getElementById('user-signature');
+        userSignatureEl.classList.add('hidden');
+
+        if (authorId) {
+            let profileData = {};
+            if (authorId === 'user') {
+                headerTitle.textContent = '';
+                backBtn.href = 'me.html';
+                coverPhotoDiv.style.backgroundImage = (globalSettings && globalSettings.wallpaper) 
+                    ? globalSettings.wallpaper 
+                    : `linear-gradient(to top right, #a18cd1, #fbc2eb)`;
+
+                profileData = {
+                    name: getDisplayName('user'),
+                    avatar: displayPersona?.avatar || defaultAvatar
+                };
+            } else {
+                headerTitle.textContent = '';
+                const chat = allChats[authorId];
+                backBtn.href = chat ? `charProfile.html?id=${authorId}` : 'contacts.html';
+
+                if (chat) {
+                    profileData = {
+                        name: chat.name,
+                        avatar: chat.settings.aiAvatar || defaultAvatar,
+                    };
+                    if(chat.signature) {
+                        userSignatureEl.textContent = chat.signature;
+                        userSignatureEl.classList.remove('hidden');
+                    }
+                    
+                    const themeSetting = chat.settings.theme || 'default';
+                    let themeColors;
+
+                    if (typeof themeSetting === 'object' && themeSetting !== null) {
+                        themeColors = themeSetting;
+                    } else {
+                        const bubbleThemes = [
+                            { name: '默认', value: 'default', colors: { userBg: '#dcf8c6', userText: '#000000', aiBg: '#e9e9e9', aiText: '#000000' } },
+                        ];
+                        const foundTheme = bubbleThemes.find(t => t.value === themeSetting) || customPresets.find(p => p.name === themeSetting);
+                        themeColors = foundTheme ? foundTheme.colors : bubbleThemes[0].colors;
+                    }
+                    
+                    coverPhotoDiv.style.backgroundImage = `linear-gradient(to top right, ${themeColors.aiBg}, ${themeColors.userBg})`;
+
+                    const themeSource = localStorage.getItem('chatAccentThemeSource') || 'user';
+                    const accentColor = (themeSource === 'ai') ? themeColors.aiBg : themeColors.userBg;
+                    document.documentElement.style.setProperty('--theme-color', accentColor);                    
+                }
+            }
+            document.getElementById('user-name').textContent = profileData.name;
+            document.getElementById('user-avatar').src = profileData.avatar;
+
+        } else {
+            headerTitle.textContent = '动态';
+            backBtn.href = 'index.html';
+            document.getElementById('user-name').textContent = getDisplayName('user');
+            document.getElementById('user-avatar').src = displayPersona?.avatar || defaultAvatar;
+            coverPhotoDiv.style.backgroundImage = (globalSettings && globalSettings.wallpaper) 
+                ? globalSettings.wallpaper 
+                : `linear-gradient(to top right, #a18cd1, #fbc2eb)`;
+        }
+
+        renderPostList(feedContainer, postsToRender, favoritedPostIds);        
+    }
+    
+    function renderPostList(container, posts, favoritedPostIds) {            
+        container.innerHTML = '';
+        if (posts.length === 0) {
+            container.innerHTML = '<p class="text-center text-gray-500 py-8">还没有任何动态</p>';
+            return;
+        }
+
+        posts.forEach(post => {                
+            const postEl = document.createElement('div');
+            postEl.className = "bg-white p-4 rounded-lg shadow-sm";
+            postEl.dataset.postId = post.id;
+            
+            const authorName = getDisplayName(post.authorId);
+            const authorAvatar = post.authorId === CURRENT_USER_ID
+                ? (displayPersona?.avatar || defaultAvatar)
+                : (allChats[post.authorId]?.settings.aiAvatar || defaultAvatar);
+            
+            const postText = post.publicText || post.content || '';
+            let contentHtml = postText ? `<p class="text-gray-800 whitespace-pre-wrap mb-2">${postText}</p>` : '';
+
+            if (post.type === 'image_post') {
+                contentHtml += `<div class="image-desc-placeholder">${post.imageDescription || '图片描述为空'}</div>`;
+            }
+            
+            const mentionedNames = post.mentionIds && post.mentionIds.length > 0
+                ? post.mentionIds.map(getDisplayName).join(', ')
+                : '';
+            const mentionsHtml = mentionedNames
+                ? `<div class="text-xs text-gray-500 mt-2">提到了: ${mentionedNames}</div>`
+                : '';
+
+            const isLikedByUser = post.likes && post.likes.includes(CURRENT_USER_ID);
+            const isFavoritedByUser = favoritedPostIds.has(post.id);
+            const showFeedback = (post.likes?.length > 0) || (post.comments?.length > 0);
+
+            postEl.innerHTML = `
+                <div class="flex items-start gap-3 mb-2">
+                    <img src="${authorAvatar}" class="w-10 h-10 rounded-full object-cover"/>
+                    <div class="flex-grow">
+                        <p class="font-semibold">${authorName}</p>
+                        <p class="text-xs text-gray-500">${formatPostTimestamp(post.timestamp)}</p>
+                    </div>
+                    <div class="relative">
+                        <button class="post-actions-btn p-1 text-gray-500 hover:bg-gray-100 rounded-full">
+                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16"><path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/></svg>
+                        </button>
+                        <div class="post-actions-menu dropdown-menu hidden">
+                            <a href="#" class="delete-post-btn dropdown-menu-item text-red-600">删除</a>
+                        </div>
+                    </div>
+                </div>
+                ${contentHtml}
+                ${mentionsHtml} 
+                <div class="mt-2 pt-2 border-t border-gray-100 flex justify-end items-center gap-4">
+                    <span class="action-icon like ${isLikedByUser ? 'active' : ''}" title="赞">
+                        <svg class="h-5 w-5" fill="${isLikedByUser ? 'currentColor' : 'none'}" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.5l1.318-1.182a4.5 4.5 0 116.364 6.364L12 20.25l-7.682-7.682a4.5 4.5 0 010-6.364z"></path></svg>
+                    </span>
+                    <span class="action-icon favorite ${isFavoritedByUser ? 'active' : ''}" title="收藏">
+                        <svg class="h-5 w-5" fill="${isFavoritedByUser ? 'currentColor' : 'none'}" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                    </span>
+                </div>
+                <div class="post-feedback mt-2 bg-gray-50 rounded-md overflow-hidden ${showFeedback ? '' : 'hidden'}">
+                    <div class="likes-container p-2 text-sm" style="color:var(--theme-color);"></div>
+                    <div class="comments-container p-2 space-y-1"></div>
+                </div>
+                <div class="relative mt-4">
+                    <div class="flex items-center gap-2">
+                        <input type="text" class="comment-input w-full bg-gray-100 border-none rounded-full px-4 py-1.5 text-sm" placeholder="评论...">
+                        <button class="comment-send-btn w-8 h-8 flex-shrink-0 text-white rounded-full flex items-center justify-center" style="background-color: var(--theme-color);">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </div>
+                    <div class="at-mention-popup"></div>
+                </div>
+            `;
+            container.appendChild(postEl);
+            updatePostUI(postEl, post, { isFavorited: isFavoritedByUser });
+        });
+    }
+
+    function openPostCreator(type) {
+        currentPostPayload = { type: type, visibleGroupIds: null, mentionIds: null };
+        const modalTitle = postModal.querySelector('#modal-title');
+        const publicTextarea = postModal.querySelector('#post-public-text');
+        const imageDescGroup = postModal.querySelector('#image-desc-group');
+
+        publicTextarea.value = '';
+        postModal.querySelector('#post-image-description').value = '';
+
+        if(type === 'text') {
+            modalTitle.textContent = '写动态';
+            publicTextarea.placeholder = '分享新鲜事...';
+            imageDescGroup.classList.add('hidden');
+        } else {
+            modalTitle.textContent = '发照片';
+            publicTextarea.placeholder = '给图片配一段公开的文字 (可选)...';
+            imageDescGroup.classList.remove('hidden');
+        }
+        
+        document.getElementById('visibility-selector-text').textContent = '谁可以看 (默认公开)';
+        document.getElementById('mention-selector-text').textContent = '提醒谁看 (可选)';
+        postModal.classList.remove('hidden');
+        postModal.style.display = 'flex';
+    }
+    
+    addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addMenu.classList.toggle('hidden');
+    });
+
+    addMenu.addEventListener('click', (e) => {
+        e.preventDefault();
+        const type = e.target.dataset.type;
+        if(type) {
+            openPostCreator(type);
+            addMenu.classList.add('hidden');
+        }
+    });
+
+    document.getElementById('cancel-create-post').addEventListener('click', () => postModal.style.display = 'none');
+
+    const visibilitySelectorButton = document.getElementById('open-visibility-selector');
+    const visibilitySelectorDropdown = document.getElementById('visibility-selector-dropdown');
+    const mentionSelectorButton = document.getElementById('open-mention-selector');
+    const mentionSelectorDropdown = document.getElementById('mention-selector-dropdown');
+
+    visibilitySelectorButton.addEventListener('click', async () => {
+        if (visibilitySelectorDropdown.classList.toggle('visible')) {
+            const groups = await db.xzoneGroups.toArray();
+            visibilitySelectorDropdown.innerHTML = groups.length > 0 
+                ? groups.map(g => `<div class="custom-select-option"><input type="checkbox" value="${g.id}" ${currentPostPayload.visibleGroupIds?.includes(g.id) ? 'checked' : ''}> <label>${g.name}</label></div>`).join('')
+                : '<p class="p-2 text-sm text-gray-500">没有可用的分组</p>';
+        }
+    });
+
+    mentionSelectorButton.addEventListener('click', async () => {
+        if (mentionSelectorDropdown.classList.toggle('visible')) {
+            const allChatObjects = await db.chats.toArray();
+            const friends = allChatObjects.filter(chat => !chat.isGroup);
+            
+            mentionSelectorDropdown.innerHTML = friends.length > 0
+                ? friends.map(f => `<div class="custom-select-option"><input type="checkbox" value="${f.id}" ${currentPostPayload.mentionIds?.includes(f.id) ? 'checked' : ''}> <label>${f.name}</label></div>`).join('')
+                : '<p class="p-2 text-sm text-gray-500">没有可以提醒的好友</p>';
+        }
+    });
+
+    visibilitySelectorDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const selectedIds = Array.from(visibilitySelectorDropdown.querySelectorAll('input:checked')).map(cb => parseInt(cb.value));
+        currentPostPayload.visibleGroupIds = selectedIds.length > 0 ? selectedIds : null;
+        document.getElementById('visibility-selector-text').textContent = selectedIds.length > 0 ? `已选 ${selectedIds.length} 个分组` : '谁可以看 (默认公开)';
+    });
+    
+    mentionSelectorDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const selectedIds = Array.from(mentionSelectorDropdown.querySelectorAll('input:checked')).map(cb => cb.value);
+        currentPostPayload.mentionIds = selectedIds.length > 0 ? selectedIds : null;
+        document.getElementById('mention-selector-text').textContent = selectedIds.length > 0 ? `已提醒 ${selectedIds.length} 人` : '提醒谁看 (可选)';
+    });
+
+    document.getElementById('confirm-create-post').addEventListener('click', async () => {
+        const publicText = postModal.querySelector('#post-public-text').value.trim();
+        const imageDesc = postModal.querySelector('#post-image-description').value.trim();
+
+        if (currentPostPayload.type === 'image' && !imageDesc) return alert('图片描述不能为空！');
+        if (currentPostPayload.type === 'text' && !publicText) return alert('动态内容不能为空！');
+
+        const newPost = {
+            authorId: CURRENT_USER_ID,
+            timestamp: Date.now(),
+            likes: [],
+            comments: [],
+            type: currentPostPayload.type === 'text' ? 'text_post' : 'image_post',
+            publicText: publicText,
+            imageDescription: currentPostPayload.type === 'image' ? imageDesc : '',
+            visibleGroupIds: currentPostPayload.visibleGroupIds || null,
+            mentionIds: currentPostPayload.mentionIds || null,
+        };
+
+        await db.xzonePosts.add(newPost);
+        postModal.style.display = 'none';
+        await renderPosts();
+    });
+
+    feedContainer.addEventListener('click', async (e) => {
+        const target = e.target;
+        const postEl = target.closest('[data-post-id]');
+        if (!postEl) return;
+
+        const postId = parseInt(postEl.dataset.postId);
+        
+        if (target.closest('.post-actions-btn')) {
+            e.preventDefault();
+            const menu = postEl.querySelector('.post-actions-menu');
+            document.querySelectorAll('.post-actions-menu').forEach(m => {
+                if (m !== menu) m.classList.add('hidden');
+            });
+            menu.classList.toggle('hidden');
+            return;
+        }
+
+        if (target.closest('.delete-post-btn')) {
+            e.preventDefault();
+            if (confirm('确定要删除这条动态吗？')) {
+                await db.xzonePosts.delete(postId);
+                postEl.remove();
+            }
+            return;
+        }
+
+        if (target.closest('.action-icon')) {
+            e.preventDefault();
+            const icon = target.closest('.action-icon');
+            let post = await db.xzonePosts.get(postId);
+            let isFavorited = !!await db.favorites.where({ type: 'xzone_post', 'content.id': postId }).first();
+
+            if (icon.classList.contains('like')) {
+                post.likes = post.likes || [];
+                const likeIndex = post.likes.indexOf(CURRENT_USER_ID);
+                if (likeIndex > -1) post.likes.splice(likeIndex, 1);
+                else post.likes.push(CURRENT_USER_ID);
+                await db.xzonePosts.update(postId, { likes: post.likes });
+
+            } else if (icon.classList.contains('favorite')) {
+                if (isFavorited) {
+                    const favEntry = await db.favorites.where({ type: 'xzone_post', 'content.id': postId }).first();
+                    await db.favorites.delete(favEntry.id);
+                    isFavorited = false;
+                } else {
+                    await db.favorites.add({ type: 'xzone_post', content: post, timestamp: Date.now() });
+                    isFavorited = true;
+                }
+            }
+            updatePostUI(postEl, post, { isFavorited });
+            return;
+        }
+
+        if (target.closest('.comment-send-btn')) {
+            e.preventDefault();
+            const commentInput = postEl.querySelector('.comment-input');
+            const commentText = commentInput.value.trim();
+            if (!commentText) return;
+
+            let post = await db.xzonePosts.get(postId);
+            post.comments = post.comments || [];
+
+            const mentionId = commentInput.dataset.mentionId;
+            const replyTo = mentionId || post.authorId;
+
+            const finalCommentText = commentText.replace(/@([\p{L}\w]+)/u, (match, name) => {
+                return mentionId ? `@[user:${mentionId}]` : match;
+            });
+            
+            post.comments.push({ author: CURRENT_USER_ID, text: finalCommentText, replyTo: replyTo });
+            await db.xzonePosts.update(postId, { comments: post.comments });
+
+            commentInput.value = '';
+            delete commentInput.dataset.mentionId;
+
+            const isFavorited = !!await db.favorites.where({ type: 'xzone_post', 'content.id': postId }).first();
+            updatePostUI(postEl, post, { isFavorited });
+            return;
+        }
+    });
+
+    /**
+     * 关键修复：@ 提及功能的逻辑
+     * 此监听器现在会从数据库中获取所有好友，而不是仅限于与当前帖子互动的用户。
+     */
+    feedContainer.addEventListener('input', async (e) => {
+        if (!e.target.classList.contains('comment-input')) return;
+        
+        const input = e.target;
+        const postEl = input.closest('[data-post-id]');
+        const popup = postEl.querySelector('.at-mention-popup');
+        const value = input.value;
+        const atMatch = value.match(/@([\p{L}\w]*)$/u);
+
+        delete input.dataset.mentionId;
+        
+        if (atMatch) {
+            // 修复：获取所有好友作为@列表
+            const allChatObjects = await db.chats.toArray();
+            const friends = allChatObjects.filter(chat => !chat.isGroup);
+            const mentionable = friends.map(f => ({ id: f.id, name: f.name }));
+
+            const searchTerm = atMatch[1].toLowerCase();
+            const filtered = mentionable.filter(user => 
+                user.name.toLowerCase().includes(searchTerm)
+            );
+            
+            popup.innerHTML = '';
+            if (filtered.length > 0) {
+                filtered.forEach(user => {
+                    const item = document.createElement('div');
+                    item.className = 'at-mention-item';
+                    item.textContent = user.name;
+                    item.onclick = () => {
+                        const newText = value.substring(0, atMatch.index) + `@${user.name} `;
+                        input.value = newText;
+                        input.dataset.mentionId = user.id;
+                        popup.style.display = 'none';
+                        input.focus();
+                    };
+                    popup.appendChild(item);
+                });
+                popup.style.display = 'block';
+            } else {
+                popup.style.display = 'none';
+            }
+        } else {
+            popup.style.display = 'none';
+        }
+    });
+
+    // 回车发送评论
+    feedContainer.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && e.target.classList.contains('comment-input')) {
+            e.preventDefault();
+            e.target.closest('[data-post-id]').querySelector('.comment-send-btn')?.click();
+        }
+    });
+
+    window.addEventListener('click', (e) => {
+        if (!e.target.closest('.post-actions-btn')) {
+            document.querySelectorAll('.post-actions-menu').forEach(m => m.classList.add('hidden'));
+        }
+        if (!e.target.closest('.custom-select-container')) {
+            visibilitySelectorDropdown.classList.remove('visible');
+            mentionSelectorDropdown.classList.remove('visible');
+        }
+        if (!addBtn.contains(e.target)) {
+            addMenu.classList.add('hidden');
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+    // 记录用户查看动态的时间
+    localStorage.setItem('lastMomentsViewTimestamp', Date.now().toString());
+    renderPosts();
+});
+
+    </script>
+</body>
+</html>

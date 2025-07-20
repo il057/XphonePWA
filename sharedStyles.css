@@ -1,0 +1,176 @@
+/* shared-styles.css */
+
+/* Apply base styles and theme color variable */
+:root {
+    --theme-color: #3b82f6; /* Default theme color, will be overridden by JS */
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f3f4f6; /* A light grey background for content pages */
+}
+
+html {
+    height: 100%;
+}
+
+body {
+    /* Use the JS-calculated height variable. Fallback to 100vh for safety. */
+    height: var(--app-height, 100vh);
+    overflow: hidden; /* Prevent body from scrolling */
+}
+
+/* This rule targets the main container div on almost every page.
+  By changing h-screen (100vh) to h-full (100%), it will now correctly
+  size itself to the body, which has our reliable --app-height.
+*/
+.w-full.h-screen.mx-auto.flex.flex-col {
+    height: 100%; /* Use h-full instead of h-screen */
+}
+
+main.flex-grow {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* 在iOS上启用流畅滚动 */
+}
+
+header.app-header, footer.app-dock {
+    flex-shrink: 0;
+}
+
+/* --- Header --- */
+.app-header {
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid #e5e7eb;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.header-btn {
+    color: #555555; /* Darker grey for better visibility */
+    transition: color 0.2s ease-in-out;
+}
+
+/* All header buttons will use the theme color on hover */
+.header-btn:hover, .header-btn.active {
+    color: var(--theme-color);
+}
+
+/* --- Dropdown Menu --- */
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background-color: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border: 1px solid rgba(0,0,0,0.05);
+    overflow: hidden;
+    transition: opacity 0.2s, transform 0.2s;
+    transform-origin: top right;
+}
+
+.dropdown-menu-item {
+    display: block;
+    padding: 10px 20px;
+    color: #333;
+    white-space: nowrap;
+}
+
+.dropdown-menu-item:hover {
+    background-color: rgba(0,0,0,0.05);
+}
+
+/* --- Main Content Area --- */
+.main-content {
+    padding-bottom: 100px; /* Ensure content doesn't hide behind the dock */
+}
+
+/* --- Bottom Navigation Dock --- */
+.app-dock {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid #e5e7eb;
+    padding: 8px 0 24px 0; /* Add padding for safe area on mobile */
+}
+
+.dock-item {
+    color: #6b7280; /* Default icon and text color */
+    transition: color 0.2s ease-in-out;
+}
+
+.dock-item.active, .dock-item:hover {
+    color: var(--theme-color); /* Highlight active/hovered item with theme color */
+}
+
+/* --- List Styles for Chat & Contacts --- */
+.list-item {
+    display: flex;
+    align-items: flex-start; 
+    padding: 12px 16px;
+    background-color: white;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background-color 0.2s;
+    width: 100%;
+}
+
+.list-item:hover {
+    background-color: #fafafa;
+}
+
+.avatar-container {
+    position: relative;
+    margin-right: 12px;
+    flex-shrink: 0; /* 防止头像被压缩 */
+}
+
+.avatar {
+    width: 48px; 
+    height: 48px;
+    border-radius: 10px; 
+    object-fit: cover;
+    background-color: #e5e7eb; /* Adds a light grey placeholder background */
+}
+
+.unread-dot {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    background-color: #ef4444; /* Red dot for unread */
+    border-radius: 50%;
+    border: 2px solid white;
+}
+
+/* -- Glow Animation for Notifications -- */
+@keyframes glow {
+    0%, 100% {
+        text-shadow: 0 0 5px var(--theme-color), 0 0 10px var(--theme-color);
+    }
+    50% {
+        text-shadow: 0 0 10px var(--theme-color), 0 0 20px var(--theme-color);
+    }
+}
+
+.has-unread-glow span, .has-unread-glow svg {
+    color: var(--theme-color) !important;
+    animation: glow 1.5s ease-in-out infinite;
+}
+
+/* For Index Page Icons */
+.app-icon-link.has-unread-glow .icon-container {
+    box-shadow: 0 0 15px 3px var(--theme-color);
+    animation: glow 1.5s ease-in-out infinite;
+}

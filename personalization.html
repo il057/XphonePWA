@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>个性化</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+
+    <style>
+        :root {
+            /* 默认主题色，会被JS覆盖 */
+            --theme-color: #3b82f6;
+            --theme-color-hover: #2563eb;
+        }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* --- Header 统一风格 CSS --- */
+        .header-btn {
+            color: #888888; /* 默认灰色 */
+            transition: color 0.2s ease-in-out;
+        }
+
+        .header-btn:hover {
+            color: var(--theme-color); /* 鼠标悬停时显示主题色 */
+        }
+
+        /* 用于 chat.html 的+号按钮，在下拉菜单显示时保持高亮 */
+        .header-btn.active {
+            color: var(--theme-color);
+        }
+        #wallpaper-preview {
+            background-image: var(--preview-bg-image);
+            background-color: var(--preview-bg-color);
+            background-size: cover;
+            background-position: center;
+        }
+        .delete-btn {
+            display: none;
+            position: absolute;
+            top: -8px;
+            right: -12px;
+            width: 24px;
+            height: 24px;
+            color: rgb(255, 0, 0);
+            line-height: 20px;
+            cursor: pointer;
+            
+            transition: transform 0.2s;
+        }
+        .delete-btn:hover {
+            transform: scale(1.1);
+        }
+        .edit-mode .delete-btn {
+            display: block;
+        }
+        /* 动态主题色应用 */
+        .header-action-text {
+            color: var(--theme-color);
+        }
+        .header-link:hover, .header-action-text:hover {
+            color: var(--theme-color-hover);
+        }
+        .swatch:hover, .custom-btn:hover {
+            border-color: var(--theme-color);
+        }
+        .active-swatch {
+            border-color: var(--theme-color) !important;
+            box-shadow: 0 0 0 2px var(--theme-color);
+        }
+        .primary-btn {
+            background-color: var(--theme-color);
+        }
+        .primary-btn:hover {
+            background-color: var(--theme-color-hover);
+        }
+        #font-preview {
+            transition: font-family 0.3s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col bg-white">
+        <header class="bg-white/80 backdrop-blur-md border-b border-gray-200 p-4 sticky top-0 z-20">
+            <div class="flex items-center justify-between">
+                <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                </a>
+                
+                <h1 class="text-base font-semibold text-gray-800">个性化</h1>
+                
+                <button id="save-all-btn" class="header-btn text-sm font-semibold px-2 py-1">保存</button>
+            </div>
+        </header>
+
+        <main class="flex-grow p-4 overflow-y-auto">
+            <div class="space-y-6">
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-3">壁纸与主题</h2>
+                    <div id="wallpaper-preview" class="w-full h-48 rounded-xl shadow-inner mb-4 border border-gray-200"></div>
+                    
+                    <div>
+                        <label for="wallpaper-url" class="block text-sm font-medium text-gray-700">图片 URL</label>
+                        <div class="mt-1 flex rounded-md shadow-sm">
+                            <input type="url" id="wallpaper-url" class="block w-full flex-1 rounded-none rounded-l-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2" placeholder="https://example.com/image.png">
+                            <button id="apply-wallpaper-url" type="button" class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                应用
+                            </button>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-gray-500 mt-4">长按预设可进行删除。</p>
+                    <div id="preset-container" class="grid grid-cols-5 gap-4 mt-2">
+                        </div>
+
+                    <div id="custom-color-maker" class="hidden mt-4 p-4 border rounded-lg bg-gray-50 space-y-4">
+                        <p class="text-sm font-medium text-gray-700">创建你的方案</p>
+                         <div class="flex items-center justify-around">
+                            <div class="text-center">
+                                <label for="color1" class="text-xs text-gray-600">渐变色1</label>
+                                <input type="color" id="color1" value="#a18cd1" class="mt-1 block w-16 h-8 p-0 border-none rounded cursor-pointer">
+                            </div>
+                            <div class="text-center">
+                                <label for="color2" class="text-xs text-gray-600">渐变色2</label>
+                                <input type="color" id="color2" value="#fbc2eb" class="mt-1 block w-16 h-8 p-0 border-none rounded cursor-pointer">
+                            </div>
+                             <div class="text-center">
+                                <label for="theme-color-picker" class="text-xs text-gray-600">主题色</label>
+                                <input type="color" id="theme-color-picker" value="#3b82f6" class="mt-1 block w-16 h-8 p-0 border-none rounded cursor-pointer">
+                            </div>
+                        </div>
+                        <button id="save-custom-preset" class="w-full text-sm text-white py-1.5 rounded-md primary-btn">保存为预设</button>
+                    </div>
+                </section>
+
+                <section class="bg-white p-4 rounded-xl shadow-sm">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-3">字体</h2>
+                    <div>
+                        <label for="font-url-input" class="block text-sm font-medium text-gray-700">字体文件 URL (.ttf, .otf, .woff)</label>
+                        <div class="mt-1">
+                            <input type="url" id="font-url-input" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2" placeholder="https://example.com/font.ttf">
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700">实时预览 (同时应用于本页面)</label>
+                        <div id="font-preview" class="mt-1 p-5 border border-gray-200 rounded-lg bg-gray-50 transition-all duration-300 ease-in-out">
+                            <p class="text-xl m-0 mb-2">你好世界 Hello World</p>
+                            <p class="text-base m-0">这是字体预览效果，12345。</p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button id="reset-font-btn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 border border-gray-300 rounded-md shadow-sm transition-colors">
+                            恢复默认字体
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="personalization.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>聊天</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+    <style>
+        .avatar-container {
+            position: relative;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .unread-dot {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            height: 18px;
+            min-width: 18px;
+            padding: 0 5px;
+            background-color: #ef4444; /* 红色 */
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 9999px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+
+            /* 使用 Flexbox 完美居中数字 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1; /* 重置 line-height */
+        }
+    </style>
+</head>
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col">
+        <header class="app-header p-4">
+            <div class="flex items-center justify-between relative">
+                <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800"></h1> <div class="relative">
+                    <button id="add-btn" class="header-btn p-1.5 -mr-1.5 rounded-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                    </button>
+                    <div id="add-menu" class="dropdown-menu hidden">
+                        <a href="#" id="add-friend-btn" class="dropdown-menu-item">添加好友</a>
+                        <a href="#" class="dropdown-menu-item">发起群聊</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main id="chat-list" class="flex-grow main-content">
+            </main>
+
+        <footer class="app-dock">
+            <div class="grid grid-cols-4 gap-4 text-center text-xs font-medium">
+                <a href="chat.html" class="dock-item active flex flex-col items-center">
+                    <span>聊天</span>
+                </a>
+                <a href="contacts.html" class="dock-item flex flex-col items-center">
+                    <span>通讯录</span>
+                </a>
+                <a href="moments.html" class="dock-item flex flex-col items-center">
+                    <span>动态</span>
+                </a>
+                <a href="me.html" class="dock-item flex flex-col items-center">
+                    <span>我</span>
+                </a>
+            </div>
+        </footer>
+    </div>
+
+    <script type="module">
+        import { db } from './db.js';
+        const chatListContainer = document.getElementById('chat-list');
+        const notificationChannel = new BroadcastChannel('xphone_notifications');
+        let renderTimeout; // 用于防抖的计时器
+        
+        // 监听来自后台的消息
+        notificationChannel.onmessage = (event) => {
+            if (event.data && event.data.type === 'new_message') {
+                console.log('接收到新消息广播，正在刷新聊天列表...');
+                loadAndRenderChats();
+            }
+        };
+
+        // format the preview
+        function formatMessagePreview(message) {
+            if (!message) return "暂无消息";
+            // Handle different message types for a better preview
+            switch (message.type) {
+                case 'sticker': return '[表情]';
+                case 'transfer': return `[转账] ¥${message.amount.toFixed(2)}`;
+                case 'user_photo': return '[图片]';
+                case 'voice_message': return '[语音]';
+                case 'share_link': return `[链接] ${message.title}`;
+                default:
+                    // For regular text, truncate if it's too long
+                    const content = message.content || '';
+                    return content.length > 25 ? content.substring(0, 25) + '...' : content;
+            }
+        }
+        async function loadAndRenderChats() {
+            console.log("执行渲染: loadAndRenderChats");
+        
+            // 使用更可靠的方式清空容器
+            while (chatListContainer.firstChild) {
+                chatListContainer.removeChild(chatListContainer.firstChild);
+            }
+
+            // Fetch and display chats 
+            const chats = await db.chats.toArray();
+            chats.sort((a, b) => {
+                const lastMsgA = a.history[a.history.length - 1];
+                const lastMsgB = b.history[b.history.length - 1];
+                const timeA = lastMsgA ? lastMsgA.timestamp : 0;
+                const timeB = lastMsgB ? lastMsgB.timestamp : 0;
+                return timeB - timeA; // Sort descending (newest first)
+            });
+
+            if (chats.length === 0) {
+                chatListContainer.innerHTML = `<p class="text-center text-gray-500 mt-8">没有聊天记录</p>`;
+                return; // 提前返回
+            }
+
+            chats.forEach(chat => {
+                //Create a DIV instead of an A tag for the main container.
+                const chatItem = document.createElement('div');
+                chatItem.className = 'block border-b border-gray-100 cursor-pointer';
+                
+                const lastMessage = chat.history[chat.history.length - 1];
+                const previewText = formatMessagePreview(lastMessage);
+                const messageTime = lastMessage 
+                    ? new Date(lastMessage.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) 
+                    : '';
+
+                // 判断是否为群聊，并选择正确的头像URL
+                let avatarUrl = '';
+                if (chat.isGroup) {
+                    avatarUrl = chat.settings?.groupAvatar || 'https://i.postimg.cc/gc3QYCDy/1-NINE7-Five.jpg'; // 群聊头像及备用
+                } else {
+                    avatarUrl = chat.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg'; // 单人聊天头像及备用
+                }
+
+                chatItem.innerHTML = `
+                    <div class="flex items-start p-4 hover:bg-gray-50">
+                        <div class="flex-shrink-0 mr-3 avatar-container avatar-link-target" data-id="${chat.id}"> 
+                            <img src="${avatarUrl}" class="avatar">
+                            <div class = "unread-dot"> 
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle-fill" viewBox="0 0 16 16">
+                                <circle cx="8" cy="8" r="8"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="pt-1 flex-grow">
+                            <div class="flex justify-between items-baseline">
+                                <p class="font-bold text-gray-800">${chat.name || chat.realName}</p>
+                                <p class="text-xs text-gray-400">${messageTime}</p>
+                            </div>
+                            <p class="text-sm text-gray-500 message-preview truncate">${previewText}</p> 
+                        </div>
+                    </div>
+                `;
+                chatListContainer.appendChild(chatItem);
+
+                // Add separate event listeners for each target.
+                if (!chat.isGroup) {
+                    const avatarElement = chatItem.querySelector('.avatar-link-target');
+                    avatarElement.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 阻止事件冒泡到父元素
+                        const id = e.currentTarget.dataset.id;
+                        window.location.href = `charProfile.html?id=${id}`;
+                    });
+                }
+
+                // Listener for the REST OF THE ITEM -> Go to Chat Room
+                chatItem.addEventListener('click', () => {
+                    window.location.href = `chatRoom.html?id=${chat.id}`;
+                });
+
+                const unreadDot = chatItem.querySelector('.unread-dot');
+                const unreadCount = chat.unreadCount || 0;
+                if (unreadCount > 0) {
+                    unreadDot.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                    unreadDot.style.display = 'flex';
+                } else {
+                    unreadDot.style.display = 'none';
+                }
+                chatListContainer.appendChild(chatItem);
+            });
+        }
+
+        function setupEventListeners() {
+
+            // Dropdown Menu Logic
+            const addBtn = document.getElementById('add-btn');
+            const addMenu = document.getElementById('add-menu');
+            addBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                addMenu.classList.toggle('hidden');
+                addBtn.classList.toggle('active', !addMenu.classList.contains('hidden'));
+            });
+            
+            // Add Friend Logic
+            document.getElementById('add-friend-btn').addEventListener('click', () => {
+                const charName = prompt("请输入您想添加的好友名字：");
+                if(charName && charName.trim() !== '') {
+                    // This is a simplified flow. A real app would save this name and pass it
+                    // as a default value to the edit page.
+                    window.location.href = `charEditProfile.html?isNew=true&name=${encodeURIComponent(charName)}`;
+                }
+            });
+
+            const createGroupBtn = addMenu.querySelector('a:nth-child(2)');
+            createGroupBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // 跳转到一个新的页面来选择联系人
+                window.location.href = 'contactsPicker.html';
+                addMenu.classList.add('hidden');
+            });
+
+            // Hide menu if clicking elsewhere
+            window.addEventListener('click', () => {
+                if (!addMenu.classList.contains('hidden')) {
+                    addMenu.classList.add('hidden');
+                    addBtn.classList.remove('active');
+                }
+            });
+        }
+
+        //创建一个请求渲染的函数，内置防抖
+        function requestRender() {
+            clearTimeout(renderTimeout);
+            // 使用一个非常短的延迟 (20毫秒) 来合并短时间内的多次渲染请求
+            renderTimeout = setTimeout(loadAndRenderChats, 20);
+        }
+        
+        // --- 最终的初始化逻辑 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            requestRender(); // 首次加载时请求渲染
+        });
+
+        // 统一处理页面可见性变化的事件
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                requestRender();
+            }
+        };
+
+        window.addEventListener('pageshow', handleVisibilityChange);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    </script>
+</body>
+</html>

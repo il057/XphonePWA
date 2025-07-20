@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>公共相册</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+</head>
+<body class="bg-gray-100">
+    <div class="w-full h-screen mx-auto flex flex-col">
+        <header class="app-header p-4">
+            <div class="flex items-center justify-between relative">
+                <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800">公共相册</h1>
+                <button id="add-photo-btn" class="header-btn p-1.5 -mr-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <main id="photo-grid" class="flex-grow p-4 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            </main>
+    </div>
+
+    <script type="module">
+        import { db } from './db.js';
+
+        const gridEl = document.getElementById('photo-grid');
+
+        async function renderAlbum() {
+            gridEl.innerHTML = '';
+            const photos = await db.globalAlbum.toArray();
+            if (photos.length === 0) {
+                gridEl.innerHTML = '<p class="col-span-full text-center text-gray-500 py-8">相册是空的，点击右上角添加第一张照片吧。</p>';
+                return;
+            }
+
+            photos.forEach(photo => {
+                const photoContainer = document.createElement('div');
+                photoContainer.className = 'relative aspect-square group';
+                photoContainer.innerHTML = `
+                    <img src="${photo.url}" title="${photo.description}" class="w-full h-full object-cover rounded-lg">
+                    <div class="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button data-id="${photo.id}" class="delete-btn text-white bg-red-600 rounded-full w-8 h-8 flex items-center justify-center text-xl font-bold">×</button>
+                    </div>
+                `;
+                gridEl.appendChild(photoContainer);
+            });
+        }
+
+        async function addPhoto() {
+            const url = prompt("请输入图片的URL：");
+            if (!url || !url.trim().startsWith('http')) {
+                if(url) alert("请输入有效的图片URL。");
+                return;
+            }
+            const description = prompt("请为这张图片添加一个描述（AI将根据这个描述来选择图片）：");
+            if (!description || !description.trim()) {
+                alert("图片描述不能为空。");
+                return;
+            }
+
+            await db.globalAlbum.add({ url: url.trim(), description: description.trim() });
+            await renderAlbum();
+        }
+
+        async function deletePhoto(photoId) {
+            if (confirm("确定要从公共相册中删除这张照片吗？")) {
+                await db.globalAlbum.delete(photoId);
+                await renderAlbum();
+            }
+        }
+        
+        // Event Listeners
+        document.getElementById('add-photo-btn').addEventListener('click', addPhoto);
+        gridEl.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-btn')) {
+                const id = parseInt(e.target.dataset.id);
+                deletePhoto(id);
+            }
+        });
+
+        // Initial render
+        renderAlbum();
+    </script>
+</body>
+</html>

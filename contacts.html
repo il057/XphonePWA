@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>通讯录</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+
+</head>
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col">
+        <header class="app-header p-4">
+            <div class="flex items-center justify-between relative">
+                 <a href="index.html" class="header-btn p-1.5 -ml-1.5 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-base font-semibold text-gray-800"></h1>
+                <div class="relative">
+                    <button id="add-btn" class="header-btn p-1.5 -mr-1.5 rounded-full">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                    </button>
+                     <div id="add-menu" class="dropdown-menu hidden">
+                        <a href="#" id="add-friend-btn" class="dropdown-menu-item">添加好友</a>
+                        <a href="#" class="dropdown-menu-item">发起群聊</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow main-content">
+            <div class="p-4 bg-white border-b">
+                <div class="flex space-x-4">
+                    <button id="friends-tab" class="tab-btn active">好友</button>
+                    <button id="groups-tab" class="tab-btn">群聊</button>
+                </div>
+            </div>
+
+            <div id="friends-list"></div>
+
+            <div id="groups-list" class="hidden"></div>
+        </main>
+
+        <footer class="app-dock">
+             <div class="grid grid-cols-4 gap-4 text-center text-xs font-medium">
+                <a href="chat.html" class="dock-item flex flex-col items-center">
+                    <span>聊天</span>
+                </a>
+                <a href="contacts.html" class="dock-item active flex flex-col items-center">
+                    <span>通讯录</span>
+                </a>
+                <a href="moments.html" class="dock-item flex flex-col items-center">
+                    <span>动态</span>
+                </a>
+                <a href="me.html" class="dock-item flex flex-col items-center">
+                    <span>我</span>
+                </a>
+            </div>
+        </footer>
+    </div>
+    
+    <style>
+        .tab-btn { padding: 4px 8px; border-radius: 6px; color: #6b7280; }
+        .tab-btn.active { background-color: var(--theme-color); color: white; font-weight: 500; }
+        .group-header { padding: 8px 16px; background-color: #f3f4f6; color: #6b7280; font-size: 0.875rem; font-weight: 500; border-bottom: 1px solid #e5e7eb; cursor: pointer; }
+        .group-header summary { display: flex; justify-content: space-between; }
+    </style>
+
+    <script type="module">
+        import { db } from './db.js';
+
+        const friendsList = document.getElementById('friends-list');
+        const groupsList = document.getElementById('groups-list');
+
+        async function loadAndRenderContacts() {
+
+            friendsList.innerHTML = '';
+            groupsList.innerHTML = '';
+
+            // More robust data fetching.
+            const allChars = await db.chats.toArray();
+            const allFriends = allChars.filter(c => !c.isGroup);
+            const allDbGroups = await db.xzoneGroups.toArray();
+            const allChats = await db.chats.toArray();
+            const allGroupsFromChats = allChats.filter(chat => chat.isGroup);
+            
+
+            // 清空旧的群聊列表
+            groupsList.innerHTML = ''; 
+
+            allGroupsFromChats.sort((a, b) => a.name.localeCompare(b.name)).forEach(groupChat => {
+                // 1. 创建 a 标签
+                const link = document.createElement('a');
+                link.href = `chatRoom.html?id=${groupChat.id}`;
+                link.className = 'flex items-center p-4 border-b hover:bg-gray-50';
+
+                // 2. 创建 img 标签
+                const img = document.createElement('img');
+                // 只取 URL 部分，即使 groupAvatar 字段是损坏的，也能避免注入多余的HTML
+                img.src = groupChat.settings.groupAvatar || fallback;
+                img.onerror = () => { img.src = 'https://static.vecteezy.com/system/resources/previews/026/019/617/non_2x/group-profile-avatar-icon-default-social-media-forum-profile-photo-vector.jpg'; };
+                img.className = 'avatar w-12 h-12 rounded-lg object-cover bg-gray-200'; // 确保有默认样式
+
+                // 3. 创建 span 标签
+                const span = document.createElement('span');
+                span.className = 'font-bold text-gray-800 ml-3';
+                span.textContent = `${groupChat.name} (${groupChat.members.length + 1})`;
+
+                // 4. 组装并添加到列表中
+                link.appendChild(img);
+                link.appendChild(span);
+                groupsList.appendChild(link);
+            });
+            allFriends.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+            const ungroupedFriends = allFriends
+                .filter(c => !c.groupId)
+                .sort((a, b) => (a.name || a.realName).localeCompare(b.name || b.realName));
+
+            const groupedFriends = allDbGroups
+                .map(group => ({
+                    ...group,
+                    members: allFriends
+                        .filter(c => c.groupId === group.id)
+                        .sort((a, b) => (a.name || a.realName).localeCompare(b.name || b.realName))
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+                const renderFriendList = (friends) => {
+                    return friends.map(chat => {
+                        const status = chat.status || { text: '在线', color: '#2ecc71' };
+                        const signature = chat.signature || '（暂无签名）';
+                        const colorMap = { green: '#2ecc71', yellow: '#f1c40f', red: '#e74c3c', gray: '#95a5a6' };
+                        const dotColor = colorMap[status.color] || status.color || '#95a5a6';
+
+                        return `
+                            <a href="charProfile.html?id=${chat.id}" class="block border-b border-gray-100">
+                                <div class="flex items-start p-4 hover:bg-gray-50">
+                                    <div class="flex-shrink-0 mr-3">
+                                        <img src="${chat.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg'}" class="avatar">
+                                    </div>
+                                    <div class="pt-1 flex-grow">
+                                        <p class="font-bold text-gray-800">${chat.name || chat.realName}</p>
+                                        <div class="flex items-center gap-2 text-sm text-gray-500">
+                                            <span class="w-2.5 h-2.5 rounded-full inline-block" style="background-color: ${dotColor};"></span>
+                                            <span class="truncate">${signature}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                        `;
+                    }).join('');
+                };
+            
+            groupedFriends.forEach(group => {
+                if (group.members.length > 0) {
+                    const details = document.createElement('details');
+                    details.open = true;
+                    details.innerHTML = `
+                        <summary class="group-header">
+                            <span>${group.name}</span>
+                            <span>${group.members.length}</span>
+                        </summary>
+                        <div class="bg-white">${renderFriendList(group.members)}</div>
+                    `;
+                    friendsList.appendChild(details);
+                }
+            });
+            
+            if (ungroupedFriends.length > 0) {
+                const details = document.createElement('details');
+                details.open = true;
+                details.innerHTML = `
+                    <summary class="group-header">
+                        <span>未分组</span>
+                        <span>${ungroupedFriends.length}</span>
+                    </summary>
+                    <div class="bg-white">${renderFriendList(ungroupedFriends)}</div>
+                `;
+                friendsList.appendChild(details);
+            }
+
+            allDbGroups.sort((a, b) => a.name.localeCompare(b.name)).forEach(group => {
+                // ... group rendering logic is fine, can be left as is ...
+            });
+        }
+
+        function setupEventListeners() {
+            // --- Tab Switching and Dropdown Logic  ---
+            const friendsTab = document.getElementById('friends-tab');
+            const groupsTab = document.getElementById('groups-tab');
+
+            friendsTab.addEventListener('click', () => {
+                friendsTab.classList.add('active');
+                groupsTab.classList.remove('active');
+                friendsList.classList.remove('hidden');
+                groupsList.classList.add('hidden');
+            });
+            groupsTab.addEventListener('click', () => {
+                groupsTab.classList.add('active');
+                friendsTab.classList.remove('active');
+                groupsList.classList.remove('hidden');
+                friendsList.classList.add('hidden');
+            });
+            
+            const addBtn = document.getElementById('add-btn');
+            const addMenu = document.getElementById('add-menu');
+            addBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                addMenu.classList.toggle('hidden');
+                addBtn.classList.toggle('active', !addMenu.classList.contains('hidden'));
+            });
+            document.getElementById('add-friend-btn').addEventListener('click', () => {
+                const charName = prompt("请输入您想添加的好友名字：");
+                if(charName && charName.trim() !== '') {
+                    window.location.href = `charEditProfile.html?isNew=true&name=${encodeURIComponent(charName)}`;
+                }
+            });
+
+            const createGroupBtn = addMenu.querySelector('a:nth-child(2)');
+            createGroupBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // 跳转到一个新的页面来选择联系人
+                window.location.href = 'contactsPicker.html';
+                addMenu.classList.add('hidden');
+            });
+            window.addEventListener('click', () => {
+                if (!addMenu.classList.contains('hidden')) {
+                    addMenu.classList.add('hidden');
+                    addBtn.classList.remove('active');
+                }
+            });
+        }
+
+        let hasInitialized = false;
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!hasInitialized) {
+                init(); // The init function will call loadAndRenderContacts and setupEventListeners
+                hasInitialized = true;
+            }
+        });
+
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                loadAndRenderContacts();
+            }
+        });
+
+        async function init() {
+            await loadAndRenderContacts();
+            setupEventListeners();
+        }
+    </script>
+</body>
+</html>

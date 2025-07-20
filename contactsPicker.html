@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>选择联系人</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <link rel="stylesheet" href="sharedStyles.css">
+    <script type="module" src="applyGlobalStyles.js" defer></script> 
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script type="module" src="./spotifyManager.js" defer></script>
+
+</head>
+<body>
+    <div class="w-full h-screen mx-auto flex flex-col">
+        <header class="app-header p-4">
+            <div class="flex items-center justify-between">
+                <a href="contacts.html" class="header-btn">取消</a>
+                <h1 class="text-base font-semibold">选择联系人</h1>
+                <button id="confirm-btn" class="header-btn font-semibold text-sm disabled:text-gray-400" disabled>完成(0)</button>
+            </div>
+        </header>
+        <main id="contact-list" class="flex-grow overflow-y-auto"></main>
+    </div>
+
+    <script type="module">
+
+        
+        import { db } from './db.js';
+
+        const contactListEl = document.getElementById('contact-list');
+        const confirmBtn = document.getElementById('confirm-btn');
+        const headerTitle = document.querySelector('h1');
+        const cancelLink = document.querySelector('a.header-btn');
+
+        let selectedContacts = new Set();
+        const urlParams = new URLSearchParams(window.location.search);
+        const groupId = urlParams.get('groupId');
+        const isManaging = !!groupId; // 如果存在groupId，则为管理模式
+
+        async function buildGroupAvatar(urlArray, size = 96) {
+            const n = Math.min(urlArray.length, 9);          // 最多 9 张
+            const grid = Math.ceil(Math.sqrt(n));            // 行列数
+            const cell = size / grid;                        // 单元格边长
+
+            const cvs = Object.assign(document.createElement('canvas'),
+                                        { width: size, height: size });
+            const ctx  = cvs.getContext('2d');
+            const fallback = 'https://files.catbox.moe/kkll8p.svg';
+
+            await Promise.all(urlArray.slice(0, n).map((url, i) =>
+                new Promise(res => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const x = (i % grid) * cell;
+                    const y = Math.floor(i / grid) * cell;
+                    ctx.drawImage(img, x, y, cell, cell);
+                    res();
+                };
+                img.onerror = () => res();                   // 失败留空即可
+                img.src = url || fallback;
+                }))
+            );
+            return cvs.toDataURL('image/png');
+        }
+
+
+        async function renderContacts(existingMembers = []) {
+            const allChats = await db.chats.toArray();
+            const friends = allChats.filter(c => !c.isGroup);
+            
+            if (friends.length === 0) {
+                contactListEl.innerHTML = `<p class="text-center text-gray-500 mt-8">没有可选择的好友</p>`;
+                return;
+            }
+            friends.sort((a, b) => {
+                const nameA = a.name || a.realName || '';
+                const nameB = b.name || b.realName || '';
+                return nameA.localeCompare(nameB, 'zh-Hans-CN', { sensitivity: 'accent' });
+            });
+
+            contactListEl.innerHTML = friends.map(friend => {
+                const avatar = friend.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg';
+                const name = friend.name || friend.realName || '未命名角色';
+                const isChecked = existingMembers.includes(friend.id);
+                if (isChecked) {
+                    selectedContacts.add(friend.id); // 预先添加到集合中
+                }
+
+                return `
+                    <div class="flex items-center p-4 border-b border-gray-100" data-id="${friend.id}">
+                        <input type="checkbox" class="h-5 w-5 rounded-full mr-4 accent-pink-500" ${isChecked ? 'checked' : ''}>
+                        <img src="${avatar}" class="w-10 h-10 rounded-full mr-3">
+                        <span class="font-medium">${name}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            updateConfirmButton(); // 更新按钮初始状态
+        }
+
+        function updateConfirmButton() {
+            const count = selectedContacts.size;
+            const requiredCount = isManaging ? 0 : 1; // 管理模式下可以有0个成员（解散群），创建模式下至少1个
+            confirmBtn.textContent = `完成(${count})`;
+            confirmBtn.disabled = count < requiredCount;
+        }
+
+        async function handleConfirm() {
+            if (isManaging) {
+                await updateGroupMembers();
+            } else {
+                await createGroupChat();
+            }
+        }
+
+        async function updateGroupMembers() {
+            const group = await db.chats.get(groupId);
+            if (!group) {
+                alert("找不到要更新的群聊！");
+                return;
+            }
+
+            const memberIds = Array.from(selectedContacts);
+            const membersData = (await db.chats.bulkGet(memberIds)).filter(Boolean);
+
+            group.members = membersData.map(m => ({
+                id: m.id,
+                name: m.name,
+                avatar: m.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg',
+                persona: m.settings?.aiPersona || ''
+            }));
+
+            await db.chats.put(group);
+            alert("群成员更新成功！");
+            window.location.href = `charEditProfile.html?id=${groupId}`;
+        }
+
+        async function createGroupChat() {
+            if (selectedContacts.size < 1) {
+                alert("请至少选择一个好友来创建群聊。");
+                return;
+            }
+            const groupName = prompt("请输入群聊名称：", "群聊");
+            if (!groupName || !groupName.trim()) return;
+
+            const memberIds = Array.from(selectedContacts);
+            const membersData = (await db.chats.bulkGet(memberIds)).filter(Boolean);
+
+            const avatarUrls = membersData
+            .filter(m => m.settings?.aiAvatar)
+            .map(m => m.settings.aiAvatar);
+
+            let groupAvatarUri = await buildGroupAvatar(avatarUrls);   // 这里用 await
+            
+            const newGroupId = 'group_' + Date.now();
+            const newGroup = {
+                id: newGroupId,
+                name: groupName.trim(),
+                isGroup: 1,
+                history: [],
+                members: membersData.map(m => ({
+                    id: m.id,
+                    name: m.name,
+                    avatar: m.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg',
+                    persona: m.settings?.aiPersona || ''
+                })),
+                settings: {
+                    groupAvatar: groupAvatarUri, // 保存Base64编码的URI
+                    myNickname: '我',
+                    myAvatar: '', 
+                    background: '',
+                    theme: 'default'
+                }
+            };
+
+            await db.chats.add(newGroup);
+            alert("群聊创建成功！");
+            window.location.href = `chatRoom.html?id=${newGroup.id}`;
+        }
+
+        function setupEventListeners() {
+            contactListEl.addEventListener('click', (e) => {
+                const item = e.target.closest('[data-id]');
+                if (!item) return;
+                const checkbox = item.querySelector('input[type="checkbox"]');
+                const contactId = item.dataset.id;
+
+                if (e.target.tagName !== 'INPUT') {
+                    checkbox.checked = !checkbox.checked;
+                }
+
+                if (checkbox.checked) {
+                    selectedContacts.add(contactId);
+                } else {
+                    selectedContacts.delete(contactId);
+                }
+                updateConfirmButton();
+            });
+
+            confirmBtn.addEventListener('click', handleConfirm);
+        }
+
+        async function init() {
+            // 预设主题，用于按名称查找颜色
+            const bubbleThemes = [
+                { name: '默认', value: 'default', colors: { userBg: '#dcf8c6' } },
+                { name: '粉蓝', value: 'pink_blue', colors: { userBg: '#eff7ff' } },
+                { name: '蓝白', value: 'blue_white', colors: { userBg: '#eff7ff' } },
+                { name: '紫黄', value: 'purple_yellow', colors: { userBg: '#fffde4' } },
+                { name: '黑白', value: 'black_white', colors: { userBg: '#343a40' } },
+            ];
+
+            // 应用主题色的函数
+            const applyThemeColor = (color) => {
+                document.documentElement.style.setProperty('--theme-color', color);
+                const style = document.createElement('style');
+                // 应用到关键元素
+                style.textContent = `
+                    input[type="checkbox"] { accent-color: ${color}; }
+                    .header-btn:not(:disabled) { color: ${color}; }
+                    #confirm-btn:not(:disabled) { background-color: ${color}; color: white; padding: 4px 8px; border-radius: 6px; }
+                `;
+                document.head.appendChild(style);
+            };
+
+            if (isManaging) {
+                headerTitle.textContent = '管理群成员';
+                const group = await db.chats.get(groupId);
+                cancelLink.href = `charEditProfile.html?id=${groupId}`;
+
+                if (group && group.settings.theme) {
+                    let theme = group.settings.theme;
+                    let accentColor = '#3b82f6'; // 默认色
+                    if (typeof theme === 'object') {
+                        accentColor = theme.userBg;
+                    } else {
+                        const preset = bubbleThemes.find(t => t.value === theme);
+                        if (preset) accentColor = preset.colors.userBg;
+                    }
+                    applyThemeColor(accentColor);
+                } else {
+                    applyThemeColor('#3b82f6'); // 回退到默认色
+                }
+
+                const existingMemberIds = group ? group.members.map(m => m.id) : [];
+                await renderContacts(existingMemberIds);
+            } else {
+                headerTitle.textContent = '选择联系人';
+                cancelLink.href = 'contacts.html';
+                const globalSettings = await db.globalSettings.get('main');
+                const accent = globalSettings?.themeColor || '#3b82f6';
+                applyThemeColor(accent);
+                await renderContacts();
+            }
+            setupEventListeners();
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>    
+</body>
+</html>
