@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">    
     <title>选择联系人</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
@@ -13,8 +15,8 @@
 
 </head>
 <body>
-    <div class="w-full h-screen mx-auto flex flex-col">
-        <header class="app-header p-4">
+    <div class="w-full h-full mx-auto flex flex-col">
+        <header class="app-header">
             <div class="flex items-center justify-between">
                 <a href="contacts.html" class="header-btn">取消</a>
                 <h1 class="text-base font-semibold">选择联系人</h1>

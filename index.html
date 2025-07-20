@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <title>主屏幕</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#3b82f6"/>
@@ -11,7 +14,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <script type="module" src="applyGlobalStyles.js" defer></script> 
-    <script src="createSharedUI.js" defer></script> 
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     <script type="module" src="./spotifyManager.js" defer></script>
     <link rel="stylesheet" href="sharedStyles.css">
@@ -32,10 +34,14 @@
         .app-icon-link:hover .icon-container {
              box-shadow: 0 0 15px 3px var(--theme-color);
         }
+
+        main {
+            padding-top: env(safe-area-inset-top);
+        }
     </style>
 </head>
 <body class="bg-gray-900">
-    <div id="phone-screen" class="w-full h-screen mx-auto flex flex-col wallpaper-bg">        
+    <div id="phone-screen" class="w-full h-full mx-auto flex flex-col wallpaper-bg">        
 
         <!-- 主屏幕内容 -->
         <main class="flex-grow flex flex-col items-center justify-center text-white" style="text-shadow: 0 2px 5px rgba(0,0,0,0.3);">

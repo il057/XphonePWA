@@ -5,6 +5,18 @@
     --theme-color: #3b82f6; /* Default theme color, will be overridden by JS */
 }
 
+html, body {
+    height: 100%;
+    overflow: hidden;
+    /* 防止在横屏模式下字体自动放大 */
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    position: relative; /* 为某些子元素的绝对定位提供基准 */
+}
+
+
 body {
     font-family: 'Inter', sans-serif;
     background-color: #f3f4f6; /* A light grey background for content pages */
@@ -32,6 +44,7 @@ main.flex-grow {
     flex: 1 1 auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch; /* 在iOS上启用流畅滚动 */
+    
 }
 
 header.app-header, footer.app-dock {
@@ -47,6 +60,12 @@ header.app-header, footer.app-dock {
     position: sticky;
     top: 0;
     z-index: 20;
+    
+    /* 关键修改：在这里统一控制所有内边距 */
+    padding-top: env(safe-area-inset-top);
+    padding-left: 1rem;  /* 1rem 相当于 p-4 的水平边距 */
+    padding-right: 1rem; /* 1rem 相当于 p-4 的水平边距 */
+    padding-bottom: 1rem;/* 1rem 相当于 p-4 的底部边距 */
 }
 
 .header-btn {
@@ -102,7 +121,8 @@ header.app-header, footer.app-dock {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid #e5e7eb;
-    padding: 8px 0 24px 0; /* Add padding for safe area on mobile */
+    padding: 8px 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
 }
 
 .dock-item {

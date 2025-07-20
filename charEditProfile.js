@@ -469,8 +469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             worldBookIds: selectedWorldBookIds // 保存新的ID数组
         };
 
-        const finalCharId = charId || crypto.randomUUID();
-
+        const finalCharId = charId || (crypto.randomUUID ? crypto.randomUUID() : `fallback-${Date.now()}-${Math.random().toString(16).substr(2, 8)}`);
         // 1. 保存与 User 的关系
         const userRelationType = document.getElementById('relation-type-user')?.value;
         const userRelationScore = document.getElementById('relation-score-user')?.value;

@@ -139,22 +139,16 @@ async function checkFooterNotifications() {
     
 }
 
-/**
- * Sets a CSS variable `--app-height` to the window's actual inner height.
- * This solves the 100vh issue on mobile browsers.
- */
-function setAppHeight() {
-    const doc = document.documentElement;
-    doc.style.setProperty('--app-height', `${window.innerHeight}px`);
-}
+document.body.addEventListener('touchmove', function (e) {
+    // 检查事件的目标元素或其父元素是否明确允许滚动
+    // 如果没有，则阻止默认的拖动行为
+    if (!e.target.closest('.overflow-y-auto')) {
+        e.preventDefault();
+    }
+}, { passive: false });
 
-// Run the function on load, resize, and orientation change to stay updated.
-window.addEventListener('resize', setAppHeight);
-window.addEventListener('orientationchange', setAppHeight);
-
-    // 在页面加载时，同时执行样式应用和后台模拟启动
+// 在页面加载时，同时执行样式应用和后台模拟启动
 document.addEventListener('DOMContentLoaded', async() => {
-    setAppHeight();
     applyGlobalStyles();
     checkFooterNotifications();
     await checkAndRunBackgroundSimulation();
