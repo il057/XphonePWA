@@ -1,6 +1,6 @@
 const clientId = '5ca835c1531e4e6ba28decdd1913ca18';
 //const redirectUri = 'http://127.0.0.1:5500/music.html';
-const redirectUri = 'https://il057.github.io/Xphone/music.html';
+const redirectUri = 'https://il057.github.io/XphonePWA/music.html';
 
 let player;
 let deviceId;
@@ -171,7 +171,7 @@ export function previousTrack() { if (player) player.previousTrack(); }
         localStorage.setItem('spotify_access_token', accessToken);
         localStorage.setItem('spotify_refresh_token', result.refresh_token);
         localStorage.setItem('spotify_token_expires_at', expiresAt);
-        window.history.pushState({}, document.title, "/music.html");
+        window.history.pushState({}, document.title, "./music.html");
     }
 
     const validToken = await ensureValidToken();
