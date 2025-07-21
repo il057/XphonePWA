@@ -1,11 +1,20 @@
 const clientId = '5ca835c1531e4e6ba28decdd1913ca18';
+function setCookie(name, value, maxAge) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax; secure`;
+}
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
 //const redirectUri = 'http://127.0.0.1:5500/music.html';
 const redirectUri = 'https://il057.github.io/XphonePWA/music.html';
 //const redirectUri = 'http://192.168.1.13:5500/music.html'
 
 let player;
 let deviceId;
-let accessToken = localStorage.getItem('spotify_access_token') || null;
+let accessToken = localStorage.getItem('spotify_access_token') || 
+                  getCookie('spotify_access_token') || null;
 let isPlayerInitialized = false;
 
 window.onSpotifyWebPlaybackSDKReady = () => {
@@ -87,6 +96,7 @@ export async function login() {
     const verifier = generateCodeVerifier(128);
     const challenge = await generateCodeChallenge(verifier);
     localStorage.setItem("spotify_code_verifier", verifier);
+    setCookie('spotify_code_verifier', verifier, 300);   // 保存 5 分钟足够完成授权
     const params = new URLSearchParams({
         client_id: clientId,
         response_type: 'code',
@@ -154,7 +164,8 @@ export function previousTrack() { if (player) player.previousTrack(); }
 
     if (code) {
         // **现在我们在 PWA 的环境中，可以安全地访问 localStorage**
-        const verifier = localStorage.getItem("spotify_code_verifier");
+        let verifier = localStorage.getItem("spotify_code_verifier") ||
+               getCookie('spotify_code_verifier');
 
         if (!verifier) {
             alert("登录失败：会话验证信息丢失。请重新尝试登录。");
@@ -187,6 +198,10 @@ export function previousTrack() { if (player) player.previousTrack(); }
             localStorage.setItem('spotify_access_token', accessToken);
             localStorage.setItem('spotify_refresh_token', result.refresh_token);
             localStorage.setItem('spotify_token_expires_at', expiresAt);
+
+            setCookie('spotify_access_token', accessToken, result.expires_in);
+            setCookie('spotify_refresh_token', result.refresh_token, 60*60*24*30); // 30 天
+            setCookie('spotify_token_expires_at', expiresAt, 60*60*24*30);
 
             // 清理URL中的授权码
             window.history.replaceState({}, document.title, window.location.pathname);
