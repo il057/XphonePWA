@@ -139,13 +139,6 @@ async function checkFooterNotifications() {
     
 }
 
-document.body.addEventListener('touchmove', function (e) {
-    // 检查事件的目标元素或其父元素是否明确允许滚动
-    // 如果没有，则阻止默认的拖动行为
-    if (!e.target.closest('.overflow-y-auto')) {
-        e.preventDefault();
-    }
-}, { passive: false });
 
 // 在页面加载时，同时执行样式应用和后台模拟启动
 document.addEventListener('DOMContentLoaded', async() => {
@@ -154,3 +147,9 @@ document.addEventListener('DOMContentLoaded', async() => {
     await checkAndRunBackgroundSimulation();
 });
 
+function calcHeaderHeight(){
+  const h = document.querySelector('.app-header')?.offsetHeight||56;
+  document.documentElement.style.setProperty('--header-height',`${h}px`);
+}
+window.addEventListener('resize',calcHeaderHeight);
+document.addEventListener('DOMContentLoaded',calcHeaderHeight);

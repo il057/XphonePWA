@@ -87,7 +87,6 @@ export function isLoggedIn() { return !!accessToken; }
 export async function login() {
     const verifier = generateCodeVerifier(128);
     const challenge = await generateCodeChallenge(verifier);
-    // 关键：将 verifier 存入 PWA 自己的 localStorage
     localStorage.setItem("spotify_code_verifier", verifier);
     const params = new URLSearchParams({
         client_id: clientId,
@@ -97,7 +96,6 @@ export async function login() {
         code_challenge_method: 'S256',
         code_challenge: challenge,
     });
-    // 跳转到外部浏览器
     document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
@@ -122,7 +120,7 @@ export async function getUserPlaylists() {
         const data = await response.json();
         return data.items || [];
     } catch (error) {
-        console.error("无法获取播放列表:", error);
+        console.error("Could not fetch playlists due to CORS or network issue. This is expected in some browser environments.");
         return [];
     }
 }
@@ -151,12 +149,11 @@ export function togglePlay() { if (player) player.togglePlay(); }
 export function nextTrack() { if (player) player.nextTrack(); }
 export function previousTrack() { if (player) player.previousTrack(); }
 
-// **新增: 专门处理粘贴的授权码的函数**
+// 这个函数现在主要由iOS PWA的手动流程调用
 export async function getAccessToken(code) {
-    // 从 PWA 的 localStorage 中安全地取出 verifier
     const verifier = localStorage.getItem("spotify_code_verifier");
     if (!verifier) {
-        alert("登录失败：无法找到本地验证信息。请重新点击登录按钮开始。");
+        alert("登录失败：会话验证信息丢失。请重新尝试登录。");
         return;
     }
 
@@ -185,24 +182,50 @@ export async function getAccessToken(code) {
         localStorage.setItem('spotify_refresh_token', result.refresh_token);
         localStorage.setItem('spotify_token_expires_at', expiresAt);
 
-        // 手动触发登录成功事件
-        document.dispatchEvent(new CustomEvent('spotifyLoggedIn'));
+        // 清理URL中的授权码 (如果存在)
+        if (window.location.search.includes('spotify_code')) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // 成功后，初始化播放器并跳转到 music.html
+        if (window.Spotify && !isPlayerInitialized) {
+             initializePlayer(accessToken);
+        }
+        // 如果当前不在music.html，则跳转过去
+        if (!window.location.pathname.endsWith('music.html')) {
+            window.location.href = 'music.html';
+        } else {
+            // 如果已经在music.html，手动触发登录事件来刷新UI
+            document.dispatchEvent(new CustomEvent('spotifyLoggedIn'));
+        }
 
     } catch (error) {
         console.error("用授权码交换令牌失败:", error);
         alert(`登录失败: ${error.message}`);
+        if (window.location.search.includes('spotify_code')) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
     }
 }
 
-
-// **修改: 启动逻辑**
-// 移除旧的、依赖URL参数的自动处理逻辑，只在正常加载时初始化播放器
+// **修改: 启动逻辑，重新加入对URL参数的处理**
 (async () => {
-    const validToken = await ensureValidToken();
-    if (validToken && window.Spotify && !isPlayerInitialized) {
-        initializePlayer(validToken);
+    const params = new URLSearchParams(window.location.search);
+    // 这个 'spotify_code' 是我们自己定义，用于从Safari安全地传递code回PWA
+    const code = params.get('spotify_code');
+
+    if (code) {
+        // 如果URL中有code，说明是自动登录流程，直接调用getAccessToken
+        await getAccessToken(code);
+    } else {
+        // 正常启动应用，检查是否存在有效token
+        const validToken = await ensureValidToken();
+        if (validToken && window.Spotify && !isPlayerInitialized) {
+            initializePlayer(validToken);
+        }
     }
 })();
+
 
 function generateCodeVerifier(length) { let text = ''; let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for (let i = 0; i < length; i++) { text += possible.charAt(Math.floor(Math.random() * possible.length)); } return text; }
 async function generateCodeChallenge(codeVerifier) { const data = new TextEncoder().encode(codeVerifier); const digest = await window.crypto.subtle.digest('SHA-256', data); return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }

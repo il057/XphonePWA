@@ -6,7 +6,7 @@
 export const db = new Dexie('ChatDB');
 
 // Define the database schema. This should be the single source of truth for the database structure.
-db.version(27).stores({
+db.version(28).stores({
     chats: '&id, isGroup, groupId, realName, lastIntelUpdateTime, unreadCount, &blockStatus',
     apiConfig: '&id',
     globalSettings: '&id',
@@ -18,7 +18,7 @@ db.version(27).stores({
     xzonePosts: '++id, timestamp, authorId',
     xzoneAlbums: '++id, name, createdAt',
     xzonePhotos: '++id, albumId',
-    favorites: '++id, [type+content.id], type, timestamp',
+    favorites: '++id, [type+content.id], type, timestamp, chatId',
     memories: '++id, chatId, [chatId+isImportant], authorName, isImportant, timestamp, type, targetDate',
     bubbleThemePresets: '&name',
     globalAlbum: '++id, url',
