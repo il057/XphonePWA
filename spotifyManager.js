@@ -1,20 +1,12 @@
-const clientId = '5ca835c1531e4e6ba28decdd1913ca18';
-function setCookie(name, value, maxAge) {
-  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax; secure`;
-}
-function getCookie(name) {
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-  return match ? decodeURIComponent(match[2]) : null;
-}
+// 文件: spotifyManager.js
 
-//const redirectUri = 'http://127.0.0.1:5500/music.html';
+const clientId = '5ca835c1531e4e6ba28decdd1913ca18';
 const redirectUri = 'https://il057.github.io/XphonePWA/music.html';
-//const redirectUri = 'http://192.168.1.13:5500/music.html'
+//const redirectUri = 'http://127.0.0.1:5500/music.html';
 
 let player;
 let deviceId;
-let accessToken = localStorage.getItem('spotify_access_token') || 
-                  getCookie('spotify_access_token') || null;
+let accessToken = localStorage.getItem('spotify_access_token') || null;
 let isPlayerInitialized = false;
 
 window.onSpotifyWebPlaybackSDKReady = () => {
@@ -58,7 +50,7 @@ async function ensureValidToken() {
     return accessToken;
 }
 
-async function refreshAccessToken(refreshToken) {
+export async function refreshAccessToken(refreshToken) {
     const storedRefreshToken = refreshToken || localStorage.getItem('spotify_refresh_token');
     if (!storedRefreshToken) return null;
     const params = new URLSearchParams({
@@ -96,7 +88,6 @@ export async function login() {
     const verifier = generateCodeVerifier(128);
     const challenge = await generateCodeChallenge(verifier);
     localStorage.setItem("spotify_code_verifier", verifier);
-    setCookie('spotify_code_verifier', verifier, 300);   // 保存 5 分钟足够完成授权
     const params = new URLSearchParams({
         client_id: clientId,
         response_type: 'code',
@@ -129,7 +120,7 @@ export async function getUserPlaylists() {
         const data = await response.json();
         return data.items || [];
     } catch (error) {
-        console.error("Could not fetch playlists due to CORS or network issue. This is expected in some browser environments.");
+        console.error("无法获取播放列表，这可能是由于网络或CORS问题。", error);
         return [];
     }
 }
@@ -147,7 +138,6 @@ export async function playPlaylist(playlistUri) {
 export async function toggleShuffle(shuffleState) {
     const token = await ensureValidToken();
     if (!token || !deviceId) return;
-
     fetch(`https://api.spotify.com/v1/me/player/shuffle?state=${shuffleState}&device_id=${deviceId}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -158,67 +148,80 @@ export function togglePlay() { if (player) player.togglePlay(); }
 export function nextTrack() { if (player) player.nextTrack(); }
 export function previousTrack() { if (player) player.previousTrack(); }
 
+// **新增：处理手动提交的 code**
+export async function handleManualCode(code) {
+    const verifier = localStorage.getItem("spotify_code_verifier");
+    if (!verifier) {
+        alert("登录失败：验证信息已过期，请重新登录。");
+        return;
+    }
+    const musicContainer = document.getElementById('music-container');
+    if (musicContainer) {
+        musicContainer.innerHTML = `<div class="text-center p-8"><p>正在完成登录，请稍候...</p></div>`;
+    }
+    await getAccessToken(code, verifier);
+}
+
+// **重构：将 Token 获取逻辑独立出来**
+async function getAccessToken(code, verifier) {
+    const tokenParams = new URLSearchParams({
+        client_id: clientId,
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirectUri,
+        code_verifier: verifier,
+    });
+
+    try {
+        const result = await fetch("https://accounts.spotify.com/api/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: tokenParams
+        }).then(res => res.json());
+
+        if (result.error) {
+            throw new Error(result.error_description || result.error);
+        }
+        
+        accessToken = result.access_token;
+        const expiresAt = Date.now() + result.expires_in * 1000;
+        localStorage.setItem('spotify_access_token', accessToken);
+        localStorage.setItem('spotify_refresh_token', result.refresh_token);
+        localStorage.setItem('spotify_token_expires_at', expiresAt);
+        localStorage.removeItem("spotify_code_verifier");
+
+        if (window.Spotify) {
+            if (player) player.disconnect();
+            isPlayerInitialized = false;
+            initializePlayer(accessToken);
+        }
+        
+        // 发出事件，让 music.js 更新UI
+        document.dispatchEvent(new CustomEvent('spotifyLoggedIn'));
+
+    } catch (error) {
+        console.error("用授权码交换令牌失败:", error);
+        alert(`登录失败: ${error.message}`);
+        // 登录失败时也触发登出事件，以重置UI到初始状态
+        document.dispatchEvent(new CustomEvent('spotifyLoggedOut'));
+    }
+}
+
+// **简化自执行函数，只处理自动流程**
 (async () => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('spotify_code'); // **注意：我们现在检查的是 'spotify_code'**
+    const codeFromUrl = params.get('code');
 
-    if (code) {
-        // **现在我们在 PWA 的环境中，可以安全地访问 localStorage**
-        let verifier = localStorage.getItem("spotify_code_verifier") ||
-               getCookie('spotify_code_verifier');
-
-        if (!verifier) {
-            alert("登录失败：会话验证信息丢失。请重新尝试登录。");
-            // 清理URL，避免用户刷新时再次触发
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return;
-        }
-
-        const tokenParams = new URLSearchParams({
-            client_id: clientId,
-            grant_type: 'authorization_code',
-            code: code,
-            redirect_uri: redirectUri, // 此处URI必须与您发起登录时使用的完全一致
-            code_verifier: verifier,
-        });
-
-        try {
-            const result = await fetch("https://accounts.spotify.com/api/token", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: tokenParams
-            }).then(res => res.json());
-
-            if (result.error) {
-                throw new Error(result.error_description || result.error);
-            }
-            
-            accessToken = result.access_token;
-            const expiresAt = Date.now() + result.expires_in * 1000;
-            localStorage.setItem('spotify_access_token', accessToken);
-            localStorage.setItem('spotify_refresh_token', result.refresh_token);
-            localStorage.setItem('spotify_token_expires_at', expiresAt);
-
-            setCookie('spotify_access_token', accessToken, result.expires_in);
-            setCookie('spotify_refresh_token', result.refresh_token, 60*60*24*30); // 30 天
-            setCookie('spotify_token_expires_at', expiresAt, 60*60*24*30);
-
-            // 清理URL中的授权码
-            window.history.replaceState({}, document.title, window.location.pathname);
-
-            // 成功后，初始化播放器并直接跳转到 music.html，提供流畅体验
-            if (window.Spotify && !isPlayerInitialized) {
-                 initializePlayer(accessToken);
-            }
-            window.location.href = 'music.html';
-
-        } catch (error) {
-            console.error("用授权码交换令牌失败:", error);
-            alert(`登录失败: ${error.message}`);
-            window.history.replaceState({}, document.title, window.location.pathname);
+    if (codeFromUrl) {
+        const verifier = localStorage.getItem("spotify_code_verifier");
+        window.history.replaceState({}, document.title, window.location.pathname); // 立即清理URL
+        
+        if (verifier && window.matchMedia('(display-mode: standalone)').matches) {
+            // 只有在PWA模式下且有verifier时，才尝试自动登录
+            await getAccessToken(codeFromUrl, verifier);
         }
     } else {
-        // 正常启动应用，检查是否存在有效token
+        // 正常启动，检查旧token
         const validToken = await ensureValidToken();
         if (validToken && window.Spotify && !isPlayerInitialized) {
             initializePlayer(validToken);
@@ -226,6 +229,6 @@ export function previousTrack() { if (player) player.previousTrack(); }
     }
 })();
 
-
+// PKCE 辅助函数 (保持不变)
 function generateCodeVerifier(length) { let text = ''; let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for (let i = 0; i < length; i++) { text += possible.charAt(Math.floor(Math.random() * possible.length)); } return text; }
 async function generateCodeChallenge(codeVerifier) { const data = new TextEncoder().encode(codeVerifier); const digest = await window.crypto.subtle.digest('SHA-256', data); return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
