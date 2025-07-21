@@ -1,8 +1,8 @@
-// 文件: spotifyManager.js
+// spotifyManager.js
 
 const clientId = '5ca835c1531e4e6ba28decdd1913ca18';
-const redirectUri = 'https://il057.github.io/XphonePWA/music.html';
 //const redirectUri = 'http://127.0.0.1:5500/music.html';
+const redirectUri = 'https://il057.github.io/XphonePWA/music.html';
 
 let player;
 let deviceId;
@@ -87,6 +87,7 @@ export function isLoggedIn() { return !!accessToken; }
 export async function login() {
     const verifier = generateCodeVerifier(128);
     const challenge = await generateCodeChallenge(verifier);
+    // 关键：将 verifier 存入 PWA 自己的 localStorage
     localStorage.setItem("spotify_code_verifier", verifier);
     const params = new URLSearchParams({
         client_id: clientId,
@@ -96,6 +97,7 @@ export async function login() {
         code_challenge_method: 'S256',
         code_challenge: challenge,
     });
+    // 跳转到外部浏览器
     document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
@@ -120,7 +122,7 @@ export async function getUserPlaylists() {
         const data = await response.json();
         return data.items || [];
     } catch (error) {
-        console.error("无法获取播放列表，这可能是由于网络或CORS问题。", error);
+        console.error("无法获取播放列表:", error);
         return [];
     }
 }
@@ -138,6 +140,7 @@ export async function playPlaylist(playlistUri) {
 export async function toggleShuffle(shuffleState) {
     const token = await ensureValidToken();
     if (!token || !deviceId) return;
+
     fetch(`https://api.spotify.com/v1/me/player/shuffle?state=${shuffleState}&device_id=${deviceId}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -148,22 +151,15 @@ export function togglePlay() { if (player) player.togglePlay(); }
 export function nextTrack() { if (player) player.nextTrack(); }
 export function previousTrack() { if (player) player.previousTrack(); }
 
-// **新增：处理手动提交的 code**
-export async function handleManualCode(code) {
+// **新增: 专门处理粘贴的授权码的函数**
+export async function getAccessToken(code) {
+    // 从 PWA 的 localStorage 中安全地取出 verifier
     const verifier = localStorage.getItem("spotify_code_verifier");
     if (!verifier) {
-        alert("登录失败：验证信息已过期，请重新登录。");
+        alert("登录失败：无法找到本地验证信息。请重新点击登录按钮开始。");
         return;
     }
-    const musicContainer = document.getElementById('music-container');
-    if (musicContainer) {
-        musicContainer.innerHTML = `<div class="text-center p-8"><p>正在完成登录，请稍候...</p></div>`;
-    }
-    await getAccessToken(code, verifier);
-}
 
-// **重构：将 Token 获取逻辑独立出来**
-async function getAccessToken(code, verifier) {
     const tokenParams = new URLSearchParams({
         client_id: clientId,
         grant_type: 'authorization_code',
@@ -188,47 +184,25 @@ async function getAccessToken(code, verifier) {
         localStorage.setItem('spotify_access_token', accessToken);
         localStorage.setItem('spotify_refresh_token', result.refresh_token);
         localStorage.setItem('spotify_token_expires_at', expiresAt);
-        localStorage.removeItem("spotify_code_verifier");
 
-        if (window.Spotify) {
-            if (player) player.disconnect();
-            isPlayerInitialized = false;
-            initializePlayer(accessToken);
-        }
-        
-        // 发出事件，让 music.js 更新UI
+        // 手动触发登录成功事件
         document.dispatchEvent(new CustomEvent('spotifyLoggedIn'));
 
     } catch (error) {
         console.error("用授权码交换令牌失败:", error);
         alert(`登录失败: ${error.message}`);
-        // 登录失败时也触发登出事件，以重置UI到初始状态
-        document.dispatchEvent(new CustomEvent('spotifyLoggedOut'));
     }
 }
 
-// **简化自执行函数，只处理自动流程**
-(async () => {
-    const params = new URLSearchParams(window.location.search);
-    const codeFromUrl = params.get('code');
 
-    if (codeFromUrl) {
-        const verifier = localStorage.getItem("spotify_code_verifier");
-        window.history.replaceState({}, document.title, window.location.pathname); // 立即清理URL
-        
-        if (verifier && window.matchMedia('(display-mode: standalone)').matches) {
-            // 只有在PWA模式下且有verifier时，才尝试自动登录
-            await getAccessToken(codeFromUrl, verifier);
-        }
-    } else {
-        // 正常启动，检查旧token
-        const validToken = await ensureValidToken();
-        if (validToken && window.Spotify && !isPlayerInitialized) {
-            initializePlayer(validToken);
-        }
+// **修改: 启动逻辑**
+// 移除旧的、依赖URL参数的自动处理逻辑，只在正常加载时初始化播放器
+(async () => {
+    const validToken = await ensureValidToken();
+    if (validToken && window.Spotify && !isPlayerInitialized) {
+        initializePlayer(validToken);
     }
 })();
 
-// PKCE 辅助函数 (保持不变)
 function generateCodeVerifier(length) { let text = ''; let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for (let i = 0; i < length; i++) { text += possible.charAt(Math.floor(Math.random() * possible.length)); } return text; }
 async function generateCodeChallenge(codeVerifier) { const data = new TextEncoder().encode(codeVerifier); const digest = await window.crypto.subtle.digest('SHA-256', data); return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
