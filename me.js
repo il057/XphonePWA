@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function renderAvatarLibrary() {
         avatarGrid.innerHTML = '';
-        const userAvatars = await db.globalAlbum.toArray();
+        const userAvatars = await db.userAvatarLibrary.toArray();
         if (userAvatars.length === 0) {
             avatarGrid.innerHTML = '<p class="col-span-4 text-center text-gray-500">头像库是空的，快去添加吧。</p>';
             return;
@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
             imgContainer.querySelector('button').addEventListener('click', async (e) => {
                 e.stopPropagation();
                 if (confirm(`确定要从全局头像库删除这个头像吗？`)) {
-                    await db.globalAlbum.delete(avatar.id);
+                    await db.userAvatarLibrary.delete(avatar.id);
                     await renderAvatarLibrary();
                 }
             });
@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (url) alert("请输入有效的图片URL！");
             return;
         }
-        await db.globalAlbum.add({ url: url.trim() });
+        await db.userAvatarLibrary.add({ url: url.trim() });
         await renderAvatarLibrary();
     }
 

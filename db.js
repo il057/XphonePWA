@@ -22,6 +22,7 @@ db.version(29).stores({
     memories: '++id, chatId, [chatId+isImportant], authorName, isImportant, timestamp, type, targetDate',
     bubbleThemePresets: '&name',
     globalAlbum: '++id, url',
+    userAvatarLibrary: '++id, &url, name',
     xzoneGroups: '++id, name, worldBookIds', // 为分组添加世界书关联
     relationships: '++id, [sourceCharId+targetCharId], sourceCharId, targetCharId', 
     eventLog: '++id, timestamp, type, groupId, processedBy',
