@@ -1674,7 +1674,8 @@ ${relationsContext}
 - **拍一拍用户**: {"type": "pat_user", "suffix": "(可选)后缀"}
 - **发布文字动态**: {"type": "create_post", "postType": "text", "content": "动态内容"}
 - **发布图片动态**: {"type": "create_post", "postType": "image", "publicText": "(可选)配文", "imageDescription": "图片描述"}
-- **点赞动态**: {"type": "like_post", "postId": 12345} (postId 必须是你看到的某条动态的ID) - **评论动态**: {"type": "comment_on_post", "postId": 12345, "commentText": "你的评论内容"}
+- **点赞动态**: {"type": "like_post", "postId": 12345} (postId 必须是你看到的某条动态的ID) 
+- **评论动态**: {"type": "comment_on_post", "postId": 12345, "commentText": "你的评论内容"}
 
 ## 5.4 个人状态与记忆
 - **更新状态**: {"type": "update_status", "text": "正在做的事...", "color": "#FF69B4"}

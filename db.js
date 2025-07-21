@@ -6,7 +6,7 @@
 export const db = new Dexie('ChatDB');
 
 // Define the database schema. This should be the single source of truth for the database structure.
-db.version(28).stores({
+db.version(29).stores({
     chats: '&id, isGroup, groupId, realName, lastIntelUpdateTime, unreadCount, &blockStatus',
     apiConfig: '&id',
     globalSettings: '&id',
@@ -25,5 +25,5 @@ db.version(28).stores({
     xzoneGroups: '++id, name, worldBookIds', // 为分组添加世界书关联
     relationships: '++id, [sourceCharId+targetCharId], sourceCharId, targetCharId', 
     eventLog: '++id, timestamp, type, groupId, processedBy',
-    offlineSummary: '&id'
+    offlineSummary: '&id, timestamp'
 });

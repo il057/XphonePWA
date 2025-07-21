@@ -621,6 +621,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 // 3. 创建新分组并保存
                 const newGroupId = await db.xzoneGroups.add({ name: newGroupName.trim() });
+
+                // 3.1 自动创建对应的编年史世界书
+                const chronicleName = `${newGroupName.trim()}编年史`;
+                const newBook = {
+                    id: 'wb_' + Date.now(), // 使用时间戳确保ID唯一
+                    name: chronicleName,
+                    content: ``
+                };
+                await db.worldBooks.add(newBook);
+
+                // 3.2 将新创建的世界书ID绑定到新分组上
+                await db.xzoneGroups.update(newGroupId, { worldBookIds: [newBook.id] });
                 
                 // 4. 刷新下拉菜单并自动选中新创建的分组
                 await refreshGroupSelect(newGroupId); 

@@ -14,7 +14,10 @@ export async function runOfflineSimulation() {
     const elapsedHours = (now - lastOnline) / (1000 * 60 * 60);
     const simThreshold = globalSettings.offlineSimHours || 1;
 
-    await db.offlineSummary.clear();
+    // 计算一周前的时间戳
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    // 删除所有时间戳早于一周前的简报记录
+    await db.offlineSummary.where('timestamp').below(oneWeekAgo).delete();
 
     // 如果离线时间未达到阈值，则不执行模拟
     if (elapsedHours < simThreshold) {
@@ -135,7 +138,8 @@ ${personas}
                 // 写入离线总结
                 await db.offlineSummary.put({
                     id: groupName,
-                    events: simulationData.new_events_summary
+                    events: simulationData.new_events_summary,
+                    timestamp: Date.now()
                 });
 
                 // 查找并更新《编年史》
@@ -144,13 +148,29 @@ ${personas}
                     const chronicleBook = associatedBooks.find(wb => wb.name.includes('编年史'));
                     
                     if (chronicleBook) {
-                        const eventDate = new Date().toLocaleDateString('zh-CN');
-                        const chronicleEntry = `\n\n【${eventDate}】\n- ` + simulationData.new_events_summary.join('\n- ');
+                        // 1. 获取更精确的时间
+                        const eventDateTime = new Date().toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                         
+                        // 2. 格式化好感度变化
+                        let relationshipChangesSummary = '';
+                        if (simulationData.relationship_updates && simulationData.relationship_updates.length > 0) {
+                            relationshipChangesSummary = simulationData.relationship_updates.map(update => 
+                                `- ${update.char1_name} 与 ${update.char2_name} 的关系发生了变化 (好感度 ${update.score_change > 0 ? '+' : ''}${update.score_change})，因为: ${update.reason}`
+                            ).join('\n');
+                        }
+
+                        // 3. 格式化主要事件
+                        const mainEventsSummary = simulationData.new_events_summary.map(event => `- ${event}`).join('\n');
+
+                        // 4. 组合成新的、更详细的条目
+                        const chronicleEntry = `\n\n【${eventDateTime}】\n` +
+                                            `${relationshipChangesSummary ? `\n[关系变化]\n${relationshipChangesSummary}\n` : ''}` +
+                                            `\n[主要事件]\n${mainEventsSummary}`;
+
                         await db.worldBooks.update(chronicleBook.id, {
                             content: (chronicleBook.content || '') + chronicleEntry
                         });
-                        console.log(`已将事件更新至《${chronicleBook.name}》。`);
+                        console.log(`已将详细事件更新至《${chronicleBook.name}》。`);
                     }
                 }
             }
@@ -277,7 +297,7 @@ export async function runActiveSimulationTick() {
                 isReactionary = true;
             }
 
-            if (!chat.blockStatus && (isReactionary || Math.random() < 0.99)) {
+            if (!chat.blockStatus && (isReactionary || Math.random() < 0.3)) {
                 console.log(`角色 "${chat.name}" 被唤醒 (原因: ${isReactionary ? '动态互动' : '随机'})，准备行动...`);
                 await triggerInactiveAiAction(chat.id);
             }
@@ -390,6 +410,7 @@ async function triggerInactiveAiAction(charId) {
 - **好感度高**: 可以更热情、更积极地互动。
 - **好感度低**: 可以更冷淡、无视、甚至发表锐评。
 - **关系特殊(如对手)**: 做出符合你们关系的行为。
+- **【【【避免重复铁律】】】**: 在评论前，你【必须】检查“社交圈动态”中该动态下是否已有你的评论。如果已有评论，你【绝对不能】再次评论，除非是回复他人的新评论。严禁发表重复或相似的内容。
 
 # 2.2 你的可选行动 (请根据你的人设【选择一项】执行):
 1.  **主动发消息**: 给用户发一条消息，分享你正在做的事或你的心情。
@@ -398,11 +419,11 @@ async function triggerInactiveAiAction(charId) {
 4.  **评论动态**: 对某条动态发表你的看法。
 
 # PART 3: 可用后台工具箱 (请选择一项)
--   主动发消息给用户: \`[{"type": "text", "name": "${chat.name}", "content": "你想对用户说的话..."}]\`
--   发布文字动态: \`[{"type": "create_post", "name": "${chat.name}", "postType": "text", "content": "动态的文字内容..."}]\`
--   发布图片动态: \`[{"type": "create_post", "name": "${chat.name}", "postType": "image", "publicText": "(可选)配图文字", "imageDescription": "对图片的详细描述"}]\`
--   点赞动态: \`[{"type": "like_post", "name": "${chat.name}", "postId": 12345}]\` (postId 必须是下面看到的动态ID)
--   评论动态: \`[{"type": "comment_on_post", "name": "${chat.name}", "postId": 12345, "commentText": "你的评论内容"}]\`
+-   主动发消息给用户: \`[{"type": "text", "content": "你想对用户说的话..."}]\`
+-   发布文字动态: \`[{"type": "create_post", "postType": "text", "content": "动态的文字内容..."}]\`
+-   发布图片动态: \`[{"type": "create_post", "postType": "image", "publicText": "(可选)配图文字", "imageDescription": "对图片的详细描述"}]\`
+-   点赞动态: \`[{"type": "like_post", "postId": 12345}]\` (postId 必须是下面看到的动态ID)
+-   评论动态: \`[{"type": "comment_on_post", "postId": 12345, "commentText": "你的评论内容"}]\`
 
 # PART 4: 决策参考情报
 ## 4.1 你的核心设定
