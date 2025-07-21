@@ -1,6 +1,7 @@
 const clientId = '5ca835c1531e4e6ba28decdd1913ca18';
 //const redirectUri = 'http://127.0.0.1:5500/music.html';
 const redirectUri = 'https://il057.github.io/XphonePWA/music.html';
+//const redirectUri = 'http://192.168.1.13:5500/music.html'
 
 let player;
 let deviceId;
@@ -149,60 +150,67 @@ export function previousTrack() { if (player) player.previousTrack(); }
 
 (async () => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    const code = params.get('spotify_code'); // **注意：我们现在检查的是 'spotify_code'**
 
     if (code) {
+        // **现在我们在 PWA 的环境中，可以安全地访问 localStorage**
         const verifier = localStorage.getItem("spotify_code_verifier");
+
+        if (!verifier) {
+            alert("登录失败：会话验证信息丢失。请重新尝试登录。");
+            // 清理URL，避免用户刷新时再次触发
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+        }
+
         const tokenParams = new URLSearchParams({
             client_id: clientId,
             grant_type: 'authorization_code',
             code: code,
-            redirect_uri: redirectUri,
+            redirect_uri: redirectUri, // 此处URI必须与您发起登录时使用的完全一致
             code_verifier: verifier,
         });
+
         try {
-            const result = await fetch("https://accounts.spotify.com/api/token", { // **再次直接请求官方API**
+            const result = await fetch("https://accounts.spotify.com/api/token", {
                 method: "POST",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: tokenParams
             }).then(res => res.json());
 
-            if (result.access_token) {
-                accessToken = result.access_token;
-                const expiresAt = Date.now() + result.expires_in * 1000;
-                localStorage.setItem('spotify_access_token', accessToken);
-                localStorage.setItem('spotify_refresh_token', result.refresh_token);
-                localStorage.setItem('spotify_token_expires_at', expiresAt);
-                
-                //  成功获取token后，移除URL中的参数并尝试引导用户返回PWA**
-                window.history.replaceState({}, document.title, "./music.html");
-                
-                // 给用户一个明确的提示
-                const musicContainer = document.getElementById('music-container');
-                if (musicContainer) {
-                    musicContainer.innerHTML = `
-                        <div class="text-center p-8">
-                            <p class="font-semibold text-lg text-green-600">授权成功！</p>
-                            <p class="text-gray-600 mt-2">请手动切换回 Xphone 应用。</p>
-                            <p class="text-xs text-gray-400 mt-4">(如果PWA没有自动刷新，请手动重启)</p>
-                        </div>
-                    `;
-                }
-            } else {
-                 throw new Error(result.error_description || '获取Token失败');
+            if (result.error) {
+                throw new Error(result.error_description || result.error);
             }
-        } catch(error) {
-            console.error("处理回调时出错:", error);
-            alert("登录失败: " + error.message);
+            
+            accessToken = result.access_token;
+            const expiresAt = Date.now() + result.expires_in * 1000;
+            localStorage.setItem('spotify_access_token', accessToken);
+            localStorage.setItem('spotify_refresh_token', result.refresh_token);
+            localStorage.setItem('spotify_token_expires_at', expiresAt);
+
+            // 清理URL中的授权码
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            // 成功后，初始化播放器并直接跳转到 music.html，提供流畅体验
+            if (window.Spotify && !isPlayerInitialized) {
+                 initializePlayer(accessToken);
+            }
+            window.location.href = 'music.html';
+
+        } catch (error) {
+            console.error("用授权码交换令牌失败:", error);
+            alert(`登录失败: ${error.message}`);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    } else {
+        // 正常启动应用，检查是否存在有效token
+        const validToken = await ensureValidToken();
+        if (validToken && window.Spotify && !isPlayerInitialized) {
+            initializePlayer(validToken);
         }
     }
-
-    // 检查并初始化播放器
-    const validToken = await ensureValidToken();
-    if (validToken && window.Spotify && !isPlayerInitialized) {
-        initializePlayer(validToken);
-    }
 })();
+
 
 function generateCodeVerifier(length) { let text = ''; let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for (let i = 0; i < length; i++) { text += possible.charAt(Math.floor(Math.random() * possible.length)); } return text; }
 async function generateCodeChallenge(codeVerifier) { const data = new TextEncoder().encode(codeVerifier); const digest = await window.crypto.subtle.digest('SHA-256', data); return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
