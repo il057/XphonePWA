@@ -122,6 +122,17 @@
                             <input type="number" id="background-interval-input" value="60" min="30" class="form-input mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2">
                             <p class="mt-2 text-xs text-gray-500">建议值 60-300。值越大，费用越低，但角色反应越慢。</p>
                         </div>
+                        
+                        <div>
+                            <label for="private-chat-prob-slider" class="block text-sm font-medium text-gray-700">私聊活动概率 (<span id="private-chat-prob-display">30</span>%)</label>
+                            <input type="range" id="private-chat-prob-slider" min="0" max="100" value="30" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <p class="mt-2 text-xs text-gray-500">每次检测时，单个私聊角色有多大概率进行独立思考和行动。</p>
+                        </div>
+                        <div>
+                            <label for="group-chat-prob-slider" class="block text-sm font-medium text-gray-700">群聊活动概率 (<span id="group-chat-prob-display">15</span>%)</label>
+                            <input type="range" id="group-chat-prob-slider" min="0" max="100" value="15" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <p class="mt-2 text-xs text-gray-500">每次检测时，单个群聊有多大概率发生一件群内事件。</p>
+                        </div>
                         <div>
                             <label for="block-cooldown-input" class="block text-sm font-medium text-gray-700">AI被拉黑后冷静期 (小时)</label>
                             <input type="number" id="block-cooldown-input" value="1" min="0.1" step="0.1" class="form-input mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm p-2">

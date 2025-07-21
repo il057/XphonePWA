@@ -259,6 +259,9 @@ export async function runActiveSimulationTick() {
         return;
     }
 
+    const privateChatProbability = settings.activeSimTickProb || 0.3;
+    const groupChatProbability = settings.groupActiveSimTickProb || 0.15;
+
     // --- 处理私聊 ---
     const allSingleChats = await db.chats.where('isGroup').equals(0).toArray();
     // 筛选出可以进行后台活动的角色（未被拉黑）
@@ -297,7 +300,7 @@ export async function runActiveSimulationTick() {
                 isReactionary = true;
             }
 
-            if (!chat.blockStatus && (isReactionary || Math.random() < 0.3)) {
+            if (!chat.blockStatus && (isReactionary || Math.random() < privateChatProbability)) {
                 console.log(`角色 "${chat.name}" 被唤醒 (原因: ${isReactionary ? '动态互动' : '随机'})，准备行动...`);
                 await triggerInactiveAiAction(chat.id);
             }
@@ -309,7 +312,7 @@ export async function runActiveSimulationTick() {
     if (allGroupChats.length > 0) {
         for (const group of allGroupChats) {
             // 每个心跳周期，每个群聊有 15% 的几率发生一次主动行为
-            if (group.members && group.members.length > 0 && Math.random() < 0.15) {
+            if (group.members && group.members.length > 0 && Math.random() < groupChatProbability) {
                 // 从群成员中随机挑选一个“搞事”的
                 const actor = group.members[Math.floor(Math.random() * group.members.length)];
                 console.log(`群聊 "${group.name}" 被唤醒，随机挑选 "${actor.name}" 发起行动...`);

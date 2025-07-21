@@ -11,6 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
         globalSettings: {}
     };
 
+    const privateChatProbSlider = document.getElementById('private-chat-prob-slider');
+    const privateChatProbDisplay = document.getElementById('private-chat-prob-display');
+    const groupChatProbSlider = document.getElementById('group-chat-prob-slider');
+    const groupChatProbDisplay = document.getElementById('group-chat-prob-display');
+
+
 
     /**
      * 从数据库加载API和全局设置
@@ -26,7 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
             id: 'main',
             enableBackgroundActivity: false,
             backgroundActivityInterval: 60,
-            blockCooldownHours: 1
+            blockCooldownHours: 1,
+            activeSimTickProb: 0.3,
+            groupActiveSimTickProb: 0.15
         };
     }
 
@@ -46,6 +54,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('background-activity-switch').checked = state.globalSettings.enableBackgroundActivity || false;
         document.getElementById('background-interval-input').value = state.globalSettings.backgroundActivityInterval || 60;
         document.getElementById('block-cooldown-input').value = state.globalSettings.blockCooldownHours || 1;
+    
+        const privateProb = (state.globalSettings.activeSimTickProb || 0.3) * 100;
+        const groupProb = (state.globalSettings.groupActiveSimTickProb || 0.15) * 100;
+        
+        privateChatProbSlider.value = privateProb;
+        privateChatProbDisplay.textContent = privateProb;
+        groupChatProbSlider.value = groupProb;
+        groupChatProbDisplay.textContent = groupProb;
     }
 
     /**
@@ -81,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
             state.globalSettings.enableBackgroundActivity = newEnableState;
             state.globalSettings.backgroundActivityInterval = parseInt(document.getElementById('background-interval-input').value) || 60;
             state.globalSettings.blockCooldownHours = parseFloat(document.getElementById('block-cooldown-input').value) || 1;
+            state.globalSettings.activeSimTickProb = parseInt(privateChatProbSlider.value) / 100;
+            state.globalSettings.groupActiveSimTickProb = parseInt(groupChatProbSlider.value) / 100;
+            // 如果启用了后台活动，启动模拟引擎
             await db.globalSettings.put(state.globalSettings);
 
             alert('设置已成功保存！');
@@ -277,6 +296,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('export-data-btn').addEventListener('click', exportBackup);
         document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-data-input').click());
         document.getElementById('import-data-input').addEventListener('change', e => importBackup(e.target.files[0]));
+        
+        privateChatProbSlider.addEventListener('input', () => {
+            privateChatProbDisplay.textContent = privateChatProbSlider.value;
+        });
+        groupChatProbSlider.addEventListener('input', () => {
+            groupChatProbDisplay.textContent = groupChatProbSlider.value;
+        });
     }
 
     main();
