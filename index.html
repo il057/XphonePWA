@@ -165,8 +165,10 @@
             document.addEventListener('DOMContentLoaded', async () => {
                 updateMainScreenClock();
                 setInterval(updateMainScreenClock, 30000); 
+            });
 
-                await runOfflineSimulation();
+            window.addEventListener('load', async () => {
+                 await runOfflineSimulation();
             });
 
             if ('serviceWorker' in navigator) {

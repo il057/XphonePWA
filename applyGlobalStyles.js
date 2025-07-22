@@ -144,6 +144,9 @@ async function checkFooterNotifications() {
 document.addEventListener('DOMContentLoaded', async() => {
     applyGlobalStyles();
     checkFooterNotifications();
+});
+
+window.addEventListener('load', async () => {
     await checkAndRunBackgroundSimulation();
 });
 

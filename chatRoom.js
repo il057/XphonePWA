@@ -1993,7 +1993,13 @@ ${musicPromptSection}
                 }
 
                 case 'red_packet': {
-                     const packetMessage = {
+                    // 验证并确保金额是一个有效的数字，如果不是则默认为0
+                    const packetAmount = parseFloat(action.amount);
+                    if (isNaN(packetAmount) || packetAmount <= 0) {
+                        console.warn(`AI红包指令缺少有效金额，已跳过。Action:`, action);
+                        continue; // 跳过这个无效的红包动作
+                    }
+                    const packetMessage = {
                         role: 'assistant',
                         senderName: actorName,
                         type: 'red_packet',

@@ -184,6 +184,8 @@ async function handleInactiveAiAction(charId) {
                 - **【【【第一人称铁律】】】**: 你的所有产出，无论是发消息还是发动态，都【必须】使用第一人称视角（“我”），严禁使用第三人称（如“他”、“她”或你自己的名字）。
                 - **【【【语言铁律】】】**: 你的所有产出【必须优先使用中文】。除非角色设定中有特殊的外语要求，否则严禁使用英文。
                 - **【【【格式铁律】】】**: 你的回复【必须】是一个完整的、符合 PART 5 要求的 JSON 对象。
+                - **【【【行动铁律】】】**: 在“response”数组中，你可以返回【零个、一个或多个】动作。如果根据你的人设和当前情景，你觉得此时应该保持沉默，就返回一个空的 \`[]\` 数组。
+
                 
                 # PART 2: 你的内在状态 (请在行动前思考)
                 在决定做什么之前，请先根据你的人设和参考情报，在内心构思：
@@ -238,6 +240,12 @@ async function handleInactiveAiAction(charId) {
                   ]
                 }
                 \`\`\`
+                **保持沉默示例:**
+                \`\`\`json
+                {
+                  "response": []
+                }
+                \`\`\`
                 `;
             try {
                 const response = await fetch(`${apiConfig.proxyUrl}/v1/chat/completions`, {
@@ -268,6 +276,10 @@ async function handleInactiveAiAction(charId) {
                 }
         
                 const responseArray = parsedObject.actions;
+                if (responseArray.length === 0) {
+                    console.log(`[SW] 角色 "${actor.name}" 决定保持沉默。`);
+                    return;
+                }
         
                 for (const action of responseArray) {
                     const actorName = action.name || chat.name;
@@ -314,7 +326,25 @@ async function handleInactiveAiAction(charId) {
                                 imageDescription: action.imageDescription || '',
                             };
                             await db.xzonePosts.add(postData);
-                            console.log(`后台活动: 角色 "${actorName}" 发布了动态`);
+                            console.log(`[SW] 后台活动: 角色 "${actorName}" 发布了动态`);
+
+                            const postAuthorChat = await db.chats.get(charId);
+                            if (postAuthorChat) {
+                                const notificationTitle = `${actorName} 发布了新动态`;
+                                const postText = action.publicText || action.content;
+                                const notificationBody = postText 
+                                    ? postText.substring(0, 100) + (postText.length > 100 ? '...' : '')
+                                    : (action.postType === 'image' ? '分享了一张照片' : '分享了新鲜事');
+
+                                self.registration.showNotification(notificationTitle, {
+                                    body: notificationBody,
+                                    icon: postAuthorChat.settings?.aiAvatar || './icons/icon-192x192.png',
+                                    tag: `xphone-post-${Date.now()}`, // 使用时间戳确保每条动态都是新通知
+                                    data: {
+                                        url: './moments.html' // 点击通知后打开动态页面
+                                    }
+                                });
+                            }
                             break;
                         
                         case 'like_post':
@@ -484,7 +514,35 @@ ${recentContextSummary}
                 await db.chats.put(groupToUpdate);
                 
                 console.log(`[SW-Group] 后台群聊活动: "${actor.name}" 在 "${group.name}" 中执行了 ${action.type} 动作。`);
-            }
+                // 只对用户能感知到的消息类型发送通知
+                if (['text', 'send_sticker', 'red_packet', 'waimai_request'].includes(action.type)) {
+                    let notificationBody = '发来一条新消息';
+                    switch(action.type) {
+                        case 'text':
+                            notificationBody = action.content;
+                            break;
+                        case 'send_sticker':
+                            notificationBody = `[${action.stickerName || '表情'}]`;
+                            break;
+                        case 'red_packet':
+                            notificationBody = `[红包] ${action.greeting || '恭喜发财，大吉大利！'}`;
+                            break;
+                        case 'waimai_request':
+                            notificationBody = `想吃 ${action.productInfo}，发起了代付请求`;
+                            break;
+                    }
+
+                    self.registration.showNotification(`${actor.name} 在 ${group.name} 中:`, {
+                        body: notificationBody.substring(0, 100) + (notificationBody.length > 100 ? '...' : ''),
+                        icon: actor.avatar || './icons/icon-192x192.png',
+                        tag: `xphone-group-${group.id}`, // 将同一群聊的通知聚合
+                        renotify: true, // 允许同一聚合标签的通知再次提醒用户
+                        data: {
+                            url: `./chatRoom.html?id=${group.id}`
+                        }
+                    });
+                }
+              }
         }
         
         // 所有消息都处理完后，发送一次广播
@@ -655,46 +713,49 @@ self.addEventListener('install', event => {
 
 // 拦截网络请求并从缓存中提供服务
 self.addEventListener('fetch', event => {
-  // 我们只对GET请求应用这个策略
-  if (event.request.method !== 'GET') {
-    return;
-  }
+      // 我们只对GET请求应用这个策略
+      if (event.request.method !== 'GET') {
+        return;
+      }
 
-  event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.match(event.request).then(response => {
-        // 在后台发起网络请求，并用新版本更新缓存
-        const fetchPromise = fetch(event.request).then(networkResponse => {
-          // 确保我们获取到了有效的响应再放入缓存
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(err => {
-          // 网络请求失败时，什么都不做，下次还会用旧缓存
-          console.warn('Fetch failed; returning offline page instead.', err);
-        });
+      event.respondWith(
+          caches.open(CACHE_NAME).then(cache => {
+              return cache.match(event.request).then(response => {
+                  // Cache First: 如果缓存中存在，直接返回缓存的响应
+                  if (response) {
+                      return response;
+                  }
 
-        // 立即返回缓存中的版本（如果存在），否则等待网络响应
-        return response || fetchPromise;
-      });
-    })
-  );
+                  // 如果缓存中不存在，则发起网络请求
+                  return fetch(event.request).then(networkResponse => {
+                      // 确保我们获取到了有效的响应再放入缓存
+                      if (networkResponse && networkResponse.status === 200) {
+                          cache.put(event.request, networkResponse.clone());
+                      }
+                      return networkResponse;
+                  }).catch(err => {
+                        // 网络请求失败时，可以返回一个离线备用页面（如果已缓存）
+                        console.warn('Fetch failed; returning offline page instead.', err);
+                        // return caches.match('/offline.html');
+                  });
+              });
+          })
+    );
 });
 
 // 激活 Service Worker 并清理旧缓存
 self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
+    const cacheWhitelist = [CACHE_NAME];
+    event.waitUntil(
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (cacheWhitelist.indexOf(cacheName) === -1) {
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
         })
-      );
-    })
-  );
+    );
 });
 
