@@ -1,4 +1,4 @@
-import { db } from './db.js';
+import { db, apiLock } from './db.js';
 import * as spotifyManager from './spotifyManager.js';
 import { updateRelationshipScore } from './simulationEngine.js';
 
@@ -1272,6 +1272,11 @@ async function getAiResponse( charIdToTrigger = null ) {
         return;
     }
 
+    if (!(await apiLock.acquire('user_chat'))) {
+        console.warn("API is busy with a high-priority task. Aborting user chat AI response.");
+        alert("AI正在处理重要事务，请稍后再试。"); // Provide user feedback
+        return;
+    }
 
     const headerEl = document.getElementById('char-name-header');
     headerEl.textContent = isGroupChat ? '成员正在输入...' : '对方正在输入...';
@@ -2438,6 +2443,8 @@ ${musicPromptSection}
         console.error("API call failed:", error);
         //alert(`获取AI回复失败: ${error.message}`);
     } finally {
+        apiLock.release('user_chat');
+        // 确保在任何情况下都移除加载状态
         headerEl.textContent = isGroupChat ? `${currentChat.name} (${currentChat.members.length + 1})` : currentChat.name;
         headerEl.classList.remove('typing-status');
     }
@@ -2692,7 +2699,7 @@ async function handleOpenRedPacket(packet) {
 
     // 3. 更新红包数据
     if (!packet.claimedBy) packet.claimedBy = {};
-    packet.claimedBy[actorName] = { amount: Math.max(0.01, claimedAmount), timestamp: Date.now() };
+    packet.claimedBy[myNickname] = { amount: Math.max(0.01, claimedAmount), timestamp: Date.now() };
 
     if (Object.keys(packet.claimedBy).length >= packet.count) {
         packet.isFullyClaimed = true;

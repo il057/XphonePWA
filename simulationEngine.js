@@ -1,4 +1,4 @@
-import { db } from './db.js';
+import { db, apiLock } from './db.js';
 const notificationChannel = new BroadcastChannel('xphone_notifications');
 
 
@@ -303,73 +303,89 @@ export function stopActiveSimulation() {
  * 它会随机挑选一个角色，让他/她进行一次独立思考和行动
  */
 export async function runActiveSimulationTick() {
-    console.log("模拟器心跳 Tick...");
-    
-    const settings = await db.globalSettings.get('main');
-    if (!settings?.enableBackgroundActivity) {
-        stopActiveSimulation();
+    // If the API is locked by a higher or equal priority task, skip this tick entirely.
+    if (apiLock.getCurrentLock() !== 'idle') {
+        // console.log(`API is locked by '${apiLock.getCurrentLock()}', skipping background tick.`);
         return;
     }
 
-    const privateChatProbability = settings.activeSimTickProb || 0.3;
-    const groupChatProbability = settings.groupActiveSimTickProb || 0.15;
-
-    // --- 处理私聊 ---
-    const allSingleChats = await db.chats.where('isGroup').equals(0).toArray();
-    // 筛选出可以进行后台活动的角色（未被拉黑）
-    const eligibleChats = allSingleChats.filter(chat => !chat.blockStatus || (chat.blockStatus.status !== 'blocked_by_ai' && chat.blockStatus.status !== 'blocked_by_user'));
-
-    if (eligibleChats.length > 0) {
-        // 随机打乱数组
-        eligibleChats.sort(() => 0.5 - Math.random());
-        // 每次心跳只唤醒1到2个角色，避免API过载
-        const chatsToWake = eligibleChats.slice(0, Math.min(eligibleChats.length, 2)); 
-        console.log(`本次唤醒 ${chatsToWake.length} 个角色:`, chatsToWake.map(c => c.name).join(', '));
-
-        for (const chat of chatsToWake) {
-           // 1. 处理被用户拉黑的角色
-            if (chat.blockStatus?.status === 'blocked_by_user') {
-                const blockedTimestamp = chat.blockStatus.timestamp;
-                if (!blockedTimestamp) continue;
-
-                const cooldownHours = settings.blockCooldownHours || 1;
-                const cooldownMilliseconds = cooldownHours * 60 * 60 * 1000;
-                const timeSinceBlock = Date.now() - blockedTimestamp;
-
-                if (timeSinceBlock > cooldownMilliseconds) {
-                    console.log(`角色 "${chat.name}" 的冷静期已过...`);
-                    chat.blockStatus.status = 'pending_system_reflection';
-                    await db.chats.put(chat);
-                    triggerAiFriendApplication(chat.id);
-                }
-                continue;
-            }
-            
-            // 2. 处理正常好友的随机活动
-            const lastMessage = chat.history.slice(-1)[0];
-            let isReactionary = false;
-            if (lastMessage && lastMessage.isHidden && lastMessage.role === 'system' && lastMessage.content.includes('[系统提示：')) {
-                isReactionary = true;
-            }
-
-            if (!chat.blockStatus && (isReactionary || Math.random() < privateChatProbability)) {
-                console.log(`角色 "${chat.name}" 被唤醒 (原因: ${isReactionary ? '动态互动' : '随机'})，准备行动...`);
-                await triggerInactiveAiAction(chat.id);
-            }
-        }
+    // Attempt to acquire the lowest priority lock.
+    if (!(await apiLock.acquire('background_tick'))) {
+        // This means another task took the lock while we were checking.
+        // console.log("Could not acquire 'background_tick' lock, another process became active.");
+        return;
     }
+    try {
+        console.log("模拟器心跳 Tick...");
+        
+        const settings = await db.globalSettings.get('main');
+        if (!settings?.enableBackgroundActivity) {
+            stopActiveSimulation();
+            return;
+        }
 
-    // --- 处理群聊 ---
-    const allGroupChats = await db.chats.where('isGroup').equals(1).toArray();
-    if (allGroupChats.length > 0) {
-        for (const group of allGroupChats) {
-            // 每个心跳周期，每个群聊有 15% 的几率发生一次主动行为
-            if (group.members && group.members.length > 0 && Math.random() < groupChatProbability) {
-                // 从群成员中随机挑选一个“搞事”的
-                const actor = group.members[Math.floor(Math.random() * group.members.length)];
-                console.log(`群聊 "${group.name}" 被唤醒，随机挑选 "${actor.name}" 发起行动...`);
-                await triggerInactiveGroupAiAction(actor, group);
+        const privateChatProbability = settings.activeSimTickProb || 0.3;
+        const groupChatProbability = settings.groupActiveSimTickProb || 0.15;
+
+        // --- 处理私聊 ---
+        const allSingleChats = await db.chats.where('isGroup').equals(0).toArray();
+        // 筛选出可以进行后台活动的角色（未被拉黑）
+        const eligibleChats = allSingleChats.filter(chat => !chat.blockStatus || (chat.blockStatus.status !== 'blocked_by_ai' && chat.blockStatus.status !== 'blocked_by_user'));
+
+        if (eligibleChats.length > 0) {
+            // 随机打乱数组
+            eligibleChats.sort(() => 0.5 - Math.random());
+            // 每次心跳只唤醒1到2个角色，避免API过载
+            const chatsToWake = eligibleChats.slice(0, Math.min(eligibleChats.length, 2)); 
+            console.log(`本次唤醒 ${chatsToWake.length} 个角色:`, chatsToWake.map(c => c.name).join(', '));
+
+            for (const chat of chatsToWake) {
+            // 1. 处理被用户拉黑的角色
+                if (chat.blockStatus?.status === 'blocked_by_user') {
+                    const blockedTimestamp = chat.blockStatus.timestamp;
+                    if (!blockedTimestamp) continue;
+
+                    const cooldownHours = settings.blockCooldownHours || 1;
+                    const cooldownMilliseconds = cooldownHours * 60 * 60 * 1000;
+                    const timeSinceBlock = Date.now() - blockedTimestamp;
+
+                    if (timeSinceBlock > cooldownMilliseconds) {
+                        console.log(`角色 "${chat.name}" 的冷静期已过...`);
+                        chat.blockStatus.status = 'pending_system_reflection';
+                        await db.chats.put(chat);
+                        triggerAiFriendApplication(chat.id);
+                    }
+                    continue;
+                }
+                
+                // 2. 处理正常好友的随机活动
+                const lastMessage = chat.history.slice(-1)[0];
+                let isReactionary = false;
+                if (lastMessage && lastMessage.isHidden && lastMessage.role === 'system' && lastMessage.content.includes('[系统提示：')) {
+                    isReactionary = true;
+                }
+
+                if (!chat.blockStatus && (isReactionary || Math.random() < privateChatProbability)) {
+                    console.log(`角色 "${chat.name}" 被唤醒 (原因: ${isReactionary ? '动态互动' : '随机'})，准备行动...`);
+                    await triggerInactiveAiAction(chat.id);
+                }
             }
         }
+
+        // --- 处理群聊 ---
+        const allGroupChats = await db.chats.where('isGroup').equals(1).toArray();
+        if (allGroupChats.length > 0) {
+            for (const group of allGroupChats) {
+                // 每个心跳周期，每个群聊有 15% 的几率发生一次主动行为
+                if (group.members && group.members.length > 0 && Math.random() < groupChatProbability) {
+                    // 从群成员中随机挑选一个“搞事”的
+                    const actor = group.members[Math.floor(Math.random() * group.members.length)];
+                    console.log(`群聊 "${group.name}" 被唤醒，随机挑选 "${actor.name}" 发起行动...`);
+                    await triggerInactiveGroupAiAction(actor, group);
+                }
+            }
+        }
+    } finally {
+        apiLock.release('background_tick');
     }
 }

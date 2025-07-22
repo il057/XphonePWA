@@ -140,7 +140,7 @@
         </footer>
 
         <script type = 'module'>
-            import { db } from './db.js';
+            import { db, apiLock } from './db.js';
             import { startActiveSimulation } from './simulationEngine.js';
             
             function updateMainScreenClock() {
@@ -194,15 +194,40 @@
 
             // 从主页面触发Service Worker执行离线模拟
             async function triggerOfflineSimulationInSW() {
-                // 确保Service Worker已经激活
-                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                    console.log('向Service Worker发送离线模拟任务...');
+                // Ensure Service Worker is ready
+                if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+                    console.error('Service Worker not active, cannot run offline simulation.');
+                    return;
+                }
+
+                // Wait for a moment to let any initial page loads settle
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // If user chat is active, wait until it's done.
+                if (apiLock.getCurrentLock() === 'user_chat') {
+                    console.log("User chat is active, delaying offline simulation.");
+                    while (apiLock.getCurrentLock() === 'user_chat') {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+
+                // Try to acquire the medium-priority lock
+                if (!(await apiLock.acquire('offline_sim'))) {
+                    console.log("Could not acquire 'offline_sim' lock. A higher priority task is running.");
+                    return;
+                }
+
+                try {
+                    console.log('Sending offline simulation task to Service Worker...');
                     navigator.serviceWorker.controller.postMessage({
                         type: 'RUN_OFFLINE_SIMULATION'
                     });
-                } else {
-                    console.error('Service Worker未激活，无法执行离线模拟。');
-                    // 可选：在这里可以放一个备用方案，比如提示用户刷新页面
+                } finally {
+                    // The simulation in SW is fire-and-forget from the main thread's perspective.
+                    // We release the lock immediately after sending the message.
+                    // The actual API calls inside the SW will run independently,
+                    // but we have prevented them from starting if a user chat was active.
+                    apiLock.release('offline_sim');
                 }
             }
         

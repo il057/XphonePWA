@@ -268,12 +268,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (Notification.permission === "granted") {
             alert("通知权限已经开启！");
-            new Notification("弦镜通知测试", { body: "如果看到这条消息，说明通知功能一切正常。" });
+            new Notification("通知测试", { body: "如果看到这条消息，说明通知功能一切正常。" });
         } else if (Notification.permission !== "denied") {
             Notification.requestPermission().then(permission => {
                 if (permission === "granted") {
                     alert("通知权限已成功开启！");
-                    new Notification("弦镜通知测试", { body: "您将会在后台收到角色的消息提醒。" });
+                    new Notification("通知测试", { body: "您将会在后台收到角色的消息提醒。" });
                 } else {
                     alert("您拒绝了通知权限，将无法收到后台消息提醒。");
                 }
