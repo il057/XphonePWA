@@ -3,7 +3,8 @@
 import { db } from './db.js';
 
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+   await db.open(); // 确保数据库已打开
 
     const editorTitle = document.getElementById('editor-title');
     const nameInput = document.getElementById('world-book-name-input');

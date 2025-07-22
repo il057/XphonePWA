@@ -992,7 +992,7 @@ self.addEventListener('periodicsync', (event) => {
 
 // --- Service Worker 生命周期事件---
 
-const CACHE_NAME = 'xphone-cache-v1';
+const CACHE_NAME = 'xphone-cache-v2';
 const urlsToCache = [
   './',
   './index.html',
@@ -1039,15 +1039,19 @@ const urlsToCache = [
 ];
 
 // 安装 Service Worker 并缓存文件
-self.addEventListener('install', event => {
-  self.skipWaiting(); // 强制跳过等待状态，立即激活新版本
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+self.addEventListener('activate', event => {
+    const cacheWhitelist = [CACHE_NAME];
+    event.waitUntil(
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (cacheWhitelist.indexOf(cacheName) === -1) {
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        }).then(() => self.clients.claim()) // 确保 Service Worker 成为所有客户端的控制者
+    );
 });
 
 // 拦截网络请求并从缓存中提供服务

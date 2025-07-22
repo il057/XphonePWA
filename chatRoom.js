@@ -107,7 +107,7 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('DOMContentLoaded', init); // Call the main init function
 
 async function init() {
-
+    await db.open();
     const backBtn = document.getElementById('back-btn');
 
         if (document.referrer.includes('charEditProfile.html')) {

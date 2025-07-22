@@ -4,6 +4,7 @@ import { db } from './db.js';
 
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await db.open(); // 确保数据库已打开
     // --- DB & State ---
 
     const urlParams = new URLSearchParams(window.location.search);

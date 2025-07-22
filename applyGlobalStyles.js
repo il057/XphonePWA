@@ -10,7 +10,7 @@ import { runActiveSimulationTick } from './simulationEngine.js';
  */
 async function applyGlobalStyles() {
     try {
-
+        await db.open(); // 确保数据库已打开
         const settings = await db.globalSettings.get('main');
 
         // 如果没有设置，则不执行任何操作

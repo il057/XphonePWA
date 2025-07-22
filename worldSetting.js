@@ -2,6 +2,7 @@
 import { db } from './db.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await db.open(); // 确保数据库已打开
     // --- DOM Elements ---
     const saveSettingsBtn = document.getElementById('save-settings-btn');
     const offlineSimHoursInput = document.getElementById('offline-sim-hours');

@@ -781,7 +781,8 @@
         }
     });
 
-    document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await db.open(); // 确保数据库已打开
     // 记录用户查看动态的时间
     localStorage.setItem('lastMomentsViewTimestamp', Date.now().toString());
     renderPosts();

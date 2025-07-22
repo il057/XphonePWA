@@ -3,9 +3,9 @@
 import { db } from './db.js';
 
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // --- DB & State ---
-
+    await db.open(); // 确保数据库已打开
 
     let state = {
         globalSettings: {},
