@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm("确定要导出所有数据吗？这将生成一个包含您所有聊天记录和设置的JSON文件。")) return;
         try {
             const backupData = {
-                version: 27, // 与DB版本号对应
+                version: 29, // 与DB版本号对应
                 timestamp: Date.now()
             };
 
