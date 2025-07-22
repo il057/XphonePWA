@@ -1040,6 +1040,7 @@ const urlsToCache = [
 
 // 安装 Service Worker 并缓存文件
 self.addEventListener('install', event => {
+  self.skipWaiting(); // 强制跳过等待状态，立即激活新版本
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
