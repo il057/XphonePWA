@@ -2363,36 +2363,44 @@ ${musicPromptSection}
                 
                     
                 case 'send_sticker': {
-                    const stickerName = action.name; 
-                    const stickerToSend = stickerName ? stickers.find(s => s.name === stickerName) : undefined;
+                    // Get the desired sticker name from the AI's action.
+                    const stickerName = action.name;
+                    
+                    // Check if a valid name was provided by the AI.
+                    if (stickerName && stickerName.trim() !== '') {
+                        // Try to find an exact match for the sticker in the user's library.
+                        const stickerToSend = stickers.find(s => s.name === stickerName);
 
-                    if (stickerToSend) {
-                        const stickerMessage = {
-                            role: 'assistant',
-                            senderName: actorName,
-                            type: 'sticker',
-                            content: stickerToSend.url,
-                            meaning: stickerToSend.name,
-                            timestamp: new Date(messageTimestamp++)
-                        };
-                        currentChat.history.push(stickerMessage);
-                        appendMessage(stickerMessage);
-                    } else {
-                        if (stickerName !== 'undefined' || stickerName !== '') {
-                            //如果提供了名字
-                            const fallback = {
+                        if (stickerToSend) {
+                            // SUCCESS: The sticker exists. Send it as an image.
+                            const stickerMessage = {
                                 role: 'assistant',
                                 senderName: actorName,
-                                type: 'text',                   // 作为普通文本消息
-                                content: `${action.stickerName}.jpg`,
+                                type: 'sticker',
+                                content: stickerToSend.url,
+                                meaning: stickerToSend.name,
                                 timestamp: new Date(messageTimestamp++)
                             };
-                            currentChat.history.push(fallback);
-                            appendMessage(fallback);
+                            currentChat.history.push(stickerMessage);
+                            appendMessage(stickerMessage);
                         } else {
-                            console.warn(`AI 试图发送一个不存在的表情: "${action.stickerName}"。已跳过此消息。`);
+                            // FALLBACK: The sticker was not found. Convert the AI's intent into a plain text message.
+                            // This handles cases where the AI sends a description like "一个翻白眼的表情".
+                            console.log(`AI wanted sticker "${stickerName}", but it was not found. Sending as text instead.`);
+                            const fallbackMessage = {
+                                role: 'assistant',
+                                senderName: actorName,
+                                type: 'text', // Send as a standard text bubble.
+                                content: `[${stickerName}]`, // Use the AI's description as the content. The brackets help signify an action.
+                                timestamp: new Date(messageTimestamp++)
+                            };
+                            currentChat.history.push(fallbackMessage);
+                            appendMessage(fallbackMessage);
                         }
-                        
+                    } else {
+                        // The AI's action was malformed (e.g., missing the 'name' property).
+                        console.log(`AI tried to send a sticker but did not provide a name. Action:`, action);
+                        // We do nothing here to avoid sending a blank or broken bubble.
                     }
                     break;
                 }
@@ -2563,7 +2571,8 @@ async function sendDirectRedPacket() {
  */
 function showRedPacketDetails(packet) {
     if (!packet) return;
-
+    const modal = document.getElementById('red-packet-details-modal');
+    const myNickname = currentChat.settings.myNickname || '我';
     const totalAmount = packet.totalAmount || 0;
     const totalCount = packet.count || 0;
     const claimedBy = packet.claimedBy || {};
@@ -2571,6 +2580,7 @@ function showRedPacketDetails(packet) {
     document.getElementById('rp-details-sender').textContent = packet.senderName;
     document.getElementById('rp-details-greeting').textContent = packet.greeting || '恭喜发财，大吉大利！';
     
+
     const myAmountEl = document.getElementById('rp-details-my-amount');
     const myClaim = claimedBy[myNickname]; // Use the safe variable
     if (myClaim !== undefined) {

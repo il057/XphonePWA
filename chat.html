@@ -118,95 +118,123 @@
                     return content.length > 20 ? content.substring(0, 20) + '...' : content;
             }
         }
-        async function loadAndRenderChats() {
-            console.log("执行渲染: loadAndRenderChats");
         
-            // 使用更可靠的方式清空容器
-            while (chatListContainer.firstChild) {
-                chatListContainer.removeChild(chatListContainer.firstChild);
+        /**
+         * Formats a timestamp into a user-friendly string based on how old it is.
+         * @param {Date | string | number} timestamp - The timestamp of the message.
+         * @returns {string} - The formatted time string (e.g., "15:30", "昨天", "星期三", "2025/7/15").
+         */
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return '';
+
+            const messageDate = new Date(timestamp);
+            const now = new Date();
+
+            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const startOfYesterday = new Date(startOfToday);
+            startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+            
+            // Find the start of the current week (assuming Monday is the first day)
+            const startOfWeek = new Date(startOfToday);
+            const dayOfWeek = now.getDay(); // Sunday = 0, Monday = 1, ...
+            const diff = (dayOfWeek === 0) ? 6 : dayOfWeek - 1; // Adjust for Sunday
+            startOfWeek.setDate(startOfWeek.getDate() - diff);
+
+            if (messageDate >= startOfToday) {
+                // Today: Show time
+                return messageDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+            } else if (messageDate >= startOfYesterday) {
+                // Yesterday
+                return '昨天';
+            } else if (messageDate >= startOfWeek) {
+                // This week: Show day of the week
+                return messageDate.toLocaleDateString('zh-CN', { weekday: 'long' });
+            } else {
+                // Older than a week: Show full date
+                return messageDate.toLocaleDateString('zh-CN');
             }
-
-            // Fetch and display chats 
-            const chats = await db.chats.toArray();
-            chats.sort((a, b) => {
-                const lastMsgA = a.history[a.history.length - 1];
-                const lastMsgB = b.history[b.history.length - 1];
-                const timeA = lastMsgA ? lastMsgA.timestamp : 0;
-                const timeB = lastMsgB ? lastMsgB.timestamp : 0;
-                return timeB - timeA; // Sort descending (newest first)
-            });
-
-            if (chats.length === 0) {
-                chatListContainer.innerHTML = `<p class="text-center text-gray-500 mt-8">没有聊天记录</p>`;
-                return; // 提前返回
-            }
-
-            chats.forEach(chat => {
-                //Create a DIV instead of an A tag for the main container.
-                const chatItem = document.createElement('div');
-                chatItem.className = 'block border-b border-gray-100 cursor-pointer';
-                
-                const lastMessage = chat.history[chat.history.length - 1];
-                const previewText = formatMessagePreview(lastMessage);
-                const messageTime = lastMessage 
-                    ? new Date(lastMessage.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) 
-                    : '';
-
-                // 判断是否为群聊，并选择正确的头像URL
-                let avatarUrl = '';
-                if (chat.isGroup) {
-                    avatarUrl = chat.settings?.groupAvatar || 'https://i.postimg.cc/gc3QYCDy/1-NINE7-Five.jpg'; // 群聊头像及备用
-                } else {
-                    avatarUrl = chat.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg'; // 单人聊天头像及备用
-                }
-
-                chatItem.innerHTML = `
-                    <div class="flex items-start p-4 hover:bg-gray-50">
-                        <div class="flex-shrink-0 mr-3 avatar-container avatar-link-target" data-id="${chat.id}"> 
-                            <img src="${avatarUrl}" class="avatar">
-                            <div class = "unread-dot"> 
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle-fill" viewBox="0 0 16 16">
-                                <circle cx="8" cy="8" r="8"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="pt-1 flex-grow">
-                            <div class="flex justify-between items-baseline">
-                                <p class="font-bold text-gray-800">${chat.name || chat.realName}</p>
-                                <p class="text-xs text-gray-400">${messageTime}</p>
-                            </div>
-                            <p class="text-sm text-gray-500 message-preview truncate">${previewText}</p> 
-                        </div>
-                    </div>
-                `;
-                chatListContainer.appendChild(chatItem);
-
-                // Add separate event listeners for each target.
-                if (!chat.isGroup) {
-                    const avatarElement = chatItem.querySelector('.avatar-link-target');
-                    avatarElement.addEventListener('click', (e) => {
-                        e.stopPropagation(); // 阻止事件冒泡到父元素
-                        const id = e.currentTarget.dataset.id;
-                        window.location.href = `charProfile.html?id=${id}`;
-                    });
-                }
-
-                // Listener for the REST OF THE ITEM -> Go to Chat Room
-                chatItem.addEventListener('click', () => {
-                    window.location.href = `chatRoom.html?id=${chat.id}`;
-                });
-
-                const unreadDot = chatItem.querySelector('.unread-dot');
-                const unreadCount = chat.unreadCount || 0;
-                if (unreadCount > 0) {
-                    unreadDot.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                    unreadDot.style.display = 'flex';
-                } else {
-                    unreadDot.style.display = 'none';
-                }
-                chatListContainer.appendChild(chatItem);
-            });
         }
+
+        async function loadAndRenderChats() {
+        console.log("执行渲染: loadAndRenderChats");
+    
+        while (chatListContainer.firstChild) {
+            chatListContainer.removeChild(chatListContainer.firstChild);
+        }
+
+        const chats = await db.chats.toArray();
+        chats.sort((a, b) => {
+            const lastMsgA = a.history[a.history.length - 1];
+            const lastMsgB = b.history[b.history.length - 1];
+            // Ensure timestamps from Date objects are converted to numbers for sorting
+            const timeA = lastMsgA ? new Date(lastMsgA.timestamp).getTime() : 0;
+            const timeB = lastMsgB ? new Date(lastMsgB.timestamp).getTime() : 0;
+            return timeB - timeA; // Sort descending (newest first)
+        });
+
+        if (chats.length === 0) {
+            chatListContainer.innerHTML = `<p class="text-center text-gray-500 mt-8">没有聊天记录</p>`;
+            return;
+        }
+
+        chats.forEach(chat => {
+            const chatItem = document.createElement('div');
+            chatItem.className = 'block border-b border-gray-100 cursor-pointer';
+            
+            const lastMessage = chat.history[chat.history.length - 1];
+            const previewText = formatMessagePreview(lastMessage);
+            // Use the new intelligent formatting function
+            const messageTime = formatTimestamp(lastMessage?.timestamp);
+
+            let avatarUrl = '';
+            if (chat.isGroup) {
+                avatarUrl = chat.settings?.groupAvatar || 'https://i.postimg.cc/gc3QYCDy/1-NINE7-Five.jpg';
+            } else {
+                avatarUrl = chat.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg';
+            }
+
+            chatItem.innerHTML = `
+                <div class="flex items-start p-4 hover:bg-gray-50">
+                    <div class="flex-shrink-0 mr-3 avatar-container avatar-link-target" data-id="${chat.id}"> 
+                        <img src="${avatarUrl}" class="avatar">
+                        <div class="unread-dot"></div>
+                    </div>
+                    <div class="pt-1 flex-grow">
+                        <div class="flex justify-between items-baseline">
+                            <p class="font-bold text-gray-800">${chat.name || chat.realName}</p>
+                            <p class="text-xs text-gray-400">${messageTime}</p>
+                        </div>
+                        <p class="text-sm text-gray-500 message-preview truncate">${previewText}</p> 
+                    </div>
+                </div>
+            `;
+
+            if (!chat.isGroup) {
+                const avatarElement = chatItem.querySelector('.avatar-link-target');
+                avatarElement.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = e.currentTarget.dataset.id;
+                    window.location.href = `charProfile.html?id=${id}`;
+                });
+            }
+
+            chatItem.addEventListener('click', () => {
+                window.location.href = `chatRoom.html?id=${chat.id}`;
+            });
+
+            const unreadDot = chatItem.querySelector('.unread-dot');
+            const unreadCount = chat.unreadCount || 0;
+            if (unreadCount > 0) {
+                unreadDot.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                unreadDot.style.display = 'flex'; // Use flex for centering as per your CSS
+            } else {
+                unreadDot.style.display = 'none';
+            }
+            
+            // This is the single, correct place to append the child.
+            chatListContainer.appendChild(chatItem);
+        });
+    }
 
         function setupEventListeners() {
 
