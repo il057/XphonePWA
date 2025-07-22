@@ -43,7 +43,7 @@
             word-break: break-word;    /* 保留，用于强制打断长单词/字符串 */
         }
         .user-bubble { background-color: var(--user-bubble-bg); color: var(--user-bubble-text); border-bottom-right-radius: 4px; }
-        .ai-bubble { background-color: var(--ai-bubble-bg); color: var(--ai-bubble-text); border-top-left-radius: 4px; }
+        .ai-bubble { background-color: var(--ai-bubble-bg); color: var(--ai-bubble-text); border-bottom-left-radius: 4px; }
         
         #chat-input:focus { border-color: var(--accent-color) !important; box-shadow: 0 0 0 1px var(--accent-color) !important; outline: none; }
         
@@ -246,7 +246,7 @@
         }
 
         /* ▼▼▼ 红包卡片样式 ▼▼▼ */
-        .message-bubble.is-red-packet .content {
+        .is-red-packet .content {
             padding: 0;
             background: transparent;
             box-shadow: none;
