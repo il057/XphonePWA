@@ -23,7 +23,7 @@ db.version(29).stores({
     bubbleThemePresets: '&name',
     globalAlbum: '++id, url',
     userAvatarLibrary: '++id, &url, name',
-    xzoneGroups: '++id, name, worldBookIds', // 为分组添加世界书关联
+    xzoneGroups: '++id, name, worldBookIds', 
     relationships: '++id, [sourceCharId+targetCharId], sourceCharId, targetCharId', 
     eventLog: '++id, timestamp, type, groupId, processedBy',
     offlineSummary: '&id, timestamp'

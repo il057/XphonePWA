@@ -214,9 +214,61 @@ export async function updateRelationshipScore(char1Id, char2Id, scoreChange) {
     }
 }
 
-// --- [新增] 后台活动模拟引擎 ---
+// --- 后台活动模拟引擎 ---
 
 let simulationIntervalId = null;
+
+/**
+ * @description 一个将任务委托给Service Worker的辅助函数。
+ * @param {object} task - 要发送给Service Worker的任务对象。
+ */
+function delegateToServiceWorker(task) {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        // 如果Service Worker处于活动状态，就向它发送消息
+        navigator.serviceWorker.controller.postMessage(task);
+    } else {
+        console.error('Service Worker未激活，无法委派后台任务:', task);
+        // 在这里可以添加一个备用方案，比如稍后重试
+    }
+}
+
+/**
+ * @description 将AI独立行动的任务委托给Service Worker。
+ * @param {string} charId - 要触发的角色的ID。
+ */
+export async function triggerInactiveAiAction(charId) {
+    console.log(`[Engine] 正在委派角色 [${charId}] 的独立行动任务...`);
+    delegateToServiceWorker({
+        type: 'TRIGGER_INACTIVE_AI_ACTION',
+        charId: charId
+    });
+}
+
+/**
+ * @description 将群聊中的AI行动任务委托给Service Worker。
+ * @param {object} actor - 执行动作的成员对象。
+ * @param {object} group - 该成员所在的群聊对象。
+ */
+export async function triggerInactiveGroupAiAction(actor, group) {
+    console.log(`[Engine] 正在委派群聊 [${group.name}] 中角色 [${actor.name}] 的行动任务...`);
+    delegateToServiceWorker({
+        type: 'TRIGGER_INACTIVE_GROUP_AI_ACTION',
+        actor: actor,
+        group: group
+    });
+}
+
+/**
+ * @description 修改后: 此函数现在将好友申请的任务委托给Service Worker。
+ * @param {string} chatId - 角色的聊天ID。
+ */
+export async function triggerAiFriendApplication(chatId) {
+    console.log(`[Engine] 正在委派角色 [${chatId}] 的好友申请任务...`);
+    delegateToServiceWorker({
+        type: 'TRIGGER_AI_FRIEND_APPLICATION',
+        chatId: chatId
+    });
+}
 
 /**
  * 启动后台活动模拟器
@@ -325,7 +377,7 @@ export async function runActiveSimulationTick() {
 /**
  * 触发一个非活跃状态下的AI进行独立行动（如发消息、发动态等）
  * @param {string} charId - 要触发的角色的ID
- */
+
 async function triggerInactiveAiAction(charId) {
     const chat = await db.chats.get(charId);
     const apiConfig = await db.apiConfig.get('main');
@@ -552,8 +604,8 @@ ${recentPostsSummary}
     } catch (error) {
         console.error(`角色 "${chat.name}" 的独立行动失败:`, error);
     }
-}
-
+} */
+/* 
 async function triggerAiFriendApplication(chatId) {
     console.log(`正在为角色 ${chatId} 触发好友申请流程...`);
     const chat = await db.chats.get(chatId);
@@ -624,12 +676,13 @@ ${contextSummary || "（没有找到相关的对话记录）"}
         await db.chats.put(chat);
     }
 }
+*/
 
 /**
  * 触发一个群聊中的AI成员进行独立行动
  * @param {object} actor - 要触发行动的成员对象 {id, name, ...}
  * @param {object} group - 该成员所在的群聊对象
- */
+
 async function triggerInactiveGroupAiAction(actor, group) {
     const apiConfig = await db.apiConfig.get('main');
     if (!apiConfig?.proxyUrl || !apiConfig?.apiKey || !apiConfig.model) return;
@@ -728,52 +781,4 @@ async function triggerInactiveGroupAiAction(actor, group) {
         console.error(`角色 "${actor.name}" 在群聊 "${group.name}" 的独立行动失败:`, error);
     }
 }
-
-/**
- * 从可能包含 markdown 或其他文本的字符串中提取并解析JSON。
- * 此版本能正确处理对象（{}）和数组（[]）。
- * @param {string} raw - The raw string from the AI.
- * @returns {object|array|null} - The parsed JSON object/array or null if parsing fails.
  */
-function extractAndParseJson(raw) {
-    if (typeof raw !== 'string' || !raw.trim()) {
-        return null;
-    }
-
-    // 1. 优先处理被 markdown 代码块包裹的 JSON
-    const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
-    let s = jsonMatch ? jsonMatch[1].trim() : raw.trim();
-
-    // 2. 寻找JSON结构的起始位置 (寻找第一个 '{' 或 '[')
-    const startIndex = s.search(/[\{\[]/);
-    if (startIndex === -1) {
-        console.error('extractJson() failed: No JSON start character found.', { originalString: raw });
-        return null;
-    }
-
-    // 3. 根据起始符号，确定对应的结束符号
-    const startChar = s[startIndex];
-    const endChar = startChar === '{' ? '}' : ']';
-    
-    // 4. 寻找最后一个匹配的结束符号
-    const endIndex = s.lastIndexOf(endChar);
-    if (endIndex === -1 || endIndex < startIndex) {
-        console.error('extractJson() failed: No matching JSON end character found.', { originalString: raw });
-        return null;
-    }
-
-    // 5. 截取有效的JSON子串
-    s = s.substring(startIndex, endIndex + 1);
-
-    // 6. 尝试解析
-    try {
-        return JSON.parse(s);
-    } catch (e) {
-        console.error('extractJson() failed: JSON.parse error after cleanup.', {
-            error: e.message,
-            stringAttemptedToParse: s,
-            originalString: raw
-        });
-        return null;
-    }
-}

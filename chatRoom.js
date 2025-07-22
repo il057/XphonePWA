@@ -87,6 +87,23 @@ function toMillis(t) {
     return t instanceof Date ? t.getTime() : Number(t);
 }
 
+const notificationChannel = new BroadcastChannel('xphone_notifications');
+
+// 监听来自Service Worker的广播
+notificationChannel.onmessage = (event) => {
+    if (event.data && event.data.type === 'new_message') {
+        console.log('接收到新消息广播，正在刷新UI...');
+        renderMessages();
+    }
+};
+
+// 为了确保用户从其他应用切回时数据最新，保留或添加这个监听器
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        renderMessages();
+    }
+});
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', init); // Call the main init function
 
@@ -553,9 +570,7 @@ function createBubble(msg) {
                         <div class="rp-type">${packetTypeText}</div>
                     </div>
                 `;
-                bubble.addEventListener('click', () => {
-                    handlePacketClick(msg.timestamp);
-                });
+                
                 break;
             case 'text_photo':
                 bubble.classList.add('is-image');
@@ -2549,14 +2564,15 @@ async function sendDirectRedPacket() {
 function showRedPacketDetails(packet) {
     if (!packet) return;
 
-    const modal = document.getElementById('red-packet-details-modal');
-    const myNickname = currentChat.settings.myNickname || '我';
-    
+    const totalAmount = packet.totalAmount || 0;
+    const totalCount = packet.count || 0;
+    const claimedBy = packet.claimedBy || {};
+
     document.getElementById('rp-details-sender').textContent = packet.senderName;
     document.getElementById('rp-details-greeting').textContent = packet.greeting || '恭喜发财，大吉大利！';
     
     const myAmountEl = document.getElementById('rp-details-my-amount');
-    const myClaim = packet.claimedBy[myNickname];
+    const myClaim = claimedBy[myNickname]; // Use the safe variable
     if (myClaim !== undefined) {
         myAmountEl.querySelector('span:first-child').textContent = myClaim.toFixed(2);
         myAmountEl.classList.remove('hidden');
@@ -2564,13 +2580,13 @@ function showRedPacketDetails(packet) {
         myAmountEl.classList.add('hidden');
     }
 
-    const claimedCount = Object.keys(packet.claimedBy).length;
-    const claimedAmountSum = Object.values(packet.claimedBy).reduce((sum, val) => sum + val, 0);
-    document.getElementById('rp-details-summary').textContent = `已领取${claimedCount}/${packet.count}个，共${claimedAmountSum.toFixed(2)}/${packet.totalAmount.toFixed(2)}元。`;
+    const claimedCount = Object.keys(claimedBy).length; // Use the safe variable
+    const claimedAmountSum = Object.values(claimedBy).reduce((sum, val) => sum + val, 0); // Use the safe variable
+    document.getElementById('rp-details-summary').textContent = `已领取${claimedCount}/${totalCount}个，共${claimedAmountSum.toFixed(2)}/${totalAmount.toFixed(2)}元。`; // Use the safe variables
 
     const listEl = document.getElementById('rp-details-list');
     listEl.innerHTML = '';
-    const claimedEntries = Object.entries(packet.claimedBy);
+    const claimedEntries = Object.entries(claimedBy);
     
     let luckyKing = { name: '', amount: -1 };
     if (packet.packetType === 'lucky' && packet.isFullyClaimed && claimedEntries.length > 1) {
@@ -2683,7 +2699,8 @@ async function handleOpenRedPacket(packet) {
  * @param {Date} timestamp - 被点击红包的时间戳
  */
 async function handlePacketClick(timestamp) {
-    const packet = currentChat.history.find(m => new Date(m.timestamp).getTime() === timestamp.getTime());
+ const targetTimestamp = toMillis(timestamp); // Use the helper function
+    const packet = currentChat.history.find(m => toMillis(m.timestamp) === targetTimestamp);    
     if (!packet) return;
 
     const myNickname = currentChat.settings.myNickname || '我';
