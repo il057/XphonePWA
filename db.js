@@ -29,6 +29,16 @@ db.version(29).stores({
     offlineSummary: '&id, timestamp'
 });
 
+const dbReadyPromise = db.open().catch(err => {
+    // 这个catch块用于捕获灾难性的、无法打开数据库的错误
+    console.error(`Failed to open Dexie database: ${err.stack || err}`);
+});
+
+// 导出一个函数，该函数返回这个权威的Promise
+// 其他文件将调用这个函数来“等待”数据库就绪
+export function isDbReady() {
+    return dbReadyPromise;
+}
 // This object will manage access to the AI API to prevent conflicts.
 export const apiLock = {
     _lock: 'idle', // 'idle', 'user_chat', 'offline_sim', 'background_tick'

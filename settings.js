@@ -1,7 +1,6 @@
 // settings.js
 // Import the shared database instance from db.js
 import { db } from './db.js';
-import { startActiveSimulation, stopActiveSimulation } from './simulationEngine.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 

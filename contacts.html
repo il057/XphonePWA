@@ -79,7 +79,7 @@
     </style>
 
     <script type="module">
-        import { db } from './db.js';
+        import { db, isDbReady } from './db.js';
 
         const friendsList = document.getElementById('friends-list');
         const groupsList = document.getElementById('groups-list');
@@ -246,7 +246,7 @@
 
         let hasInitialized = false;
         document.addEventListener('DOMContentLoaded', async () => {
-            await db.open();
+            await isDbReady();
             if (!hasInitialized) {
                 init(); // The init function will call loadAndRenderContacts and setupEventListeners
                 hasInitialized = true;

@@ -1,7 +1,7 @@
-import { db } from './db.js';
+import { db, isDbReady } from './db.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await db.open(); // 确保数据库已打开
+    await isDbReady();
     // --- STATE ---
     let activePersonaIdForAvatar = null;
     let activePersonaIdForChats = null;

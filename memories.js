@@ -1,8 +1,8 @@
 // phone/memories.js
-import { db } from './db.js';
+import { db, isDbReady} from './db.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await db.open(); // 确保数据库已打开
+    await isDbReady();
     // --- DOM Elements ---
     const listEl = document.getElementById('memories-list');
     const filterBtn = document.getElementById('filter-btn');

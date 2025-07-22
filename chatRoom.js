@@ -1,4 +1,4 @@
-import { db, apiLock } from './db.js';
+import { db, apiLock, isDbReady } from './db.js';
 import * as spotifyManager from './spotifyManager.js';
 import { updateRelationshipScore } from './simulationEngine.js';
 
@@ -107,7 +107,7 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('DOMContentLoaded', init); // Call the main init function
 
 async function init() {
-    await db.open();
+    await isDbReady();
     const backBtn = document.getElementById('back-btn');
 
         if (document.referrer.includes('charEditProfile.html')) {

@@ -89,7 +89,7 @@
     </div>
 
     <script type="module">
-        import { db } from './db.js';
+        import { db, isDbReady } from './db.js';
         const chatListContainer = document.getElementById('chat-list');
         const notificationChannel = new BroadcastChannel('xphone_notifications');
         let renderTimeout; // 用于防抖的计时器
@@ -283,7 +283,7 @@
         
         // --- 最终的初始化逻辑 ---
         document.addEventListener('DOMContentLoaded', async () => {
-            await db.open();
+            await isDbReady();
             setupEventListeners();
             requestRender(); // 首次加载时请求渲染
         });

@@ -223,12 +223,19 @@ let simulationIntervalId = null;
  * @param {object} task - 要发送给Service Worker的任务对象。
  */
 function delegateToServiceWorker(task) {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        // 如果Service Worker处于活动状态，就向它发送消息
-        navigator.serviceWorker.controller.postMessage(task);
+    if ('serviceWorker' in navigator) {
+        // 使用 .ready 确保我们与一个已激活的Service Worker通信
+        navigator.serviceWorker.ready.then(registration => {
+            if (registration.active) {
+                registration.active.postMessage(task);
+            } else {
+                 console.error('Service Worker已注册但未激活，无法委派任务:', task);
+            }
+        }).catch(error => {
+            console.error('获取Service Worker registration失败:', error);
+        });
     } else {
-        console.error('Service Worker未激活，无法委派后台任务:', task);
-        // 在这里可以添加一个备用方案，比如稍后重试
+        console.error('浏览器不支持Service Worker，无法委派后台任务:', task);
     }
 }
 

@@ -1,7 +1,7 @@
-import { db } from './db.js';
+import { db, isDbReady } from './db.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await db.open(); // 确保数据库已打开
+    await isDbReady();
     const gridContainer = document.getElementById('sticker-grid-container');
     const editBtn = document.getElementById('edit-stickers-btn');
     const modal = document.getElementById('add-sticker-modal');

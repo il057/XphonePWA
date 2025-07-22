@@ -1,10 +1,10 @@
 // settings.js
 // Import the shared database instance from db.js
-import { db } from './db.js';
+import { db, isDbReady} from './db.js';
 
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await db.open(); // 确保数据库已打开
+    await isDbReady();
     // --- DB & State ---
 
     const urlParams = new URLSearchParams(window.location.search);

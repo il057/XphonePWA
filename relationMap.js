@@ -1,8 +1,8 @@
 // phone/relationMap.js
-import { db } from './db.js';
+import { db, isDbReady } from './db.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await db.open(); // 确保数据库已打开
+    await isDbReady();
     const container = document.getElementById('relation-network');
     if (!container) return;
 
