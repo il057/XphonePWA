@@ -992,7 +992,7 @@ self.addEventListener('periodicsync', (event) => {
 
 // --- Service Worker 生命周期事件---
 
-const CACHE_NAME = 'xphone-cache-v2';
+const CACHE_NAME = 'xphone-cache-v3';
 const urlsToCache = [
   './',
   './index.html',
@@ -1056,38 +1056,44 @@ self.addEventListener('activate', event => {
 
 // 拦截网络请求并从缓存中提供服务
 self.addEventListener('fetch', event => {
-
-    // 如果请求的是.map文件，则直接走网络，不进行任何缓存操作
-    if (event.request.url.endsWith('.map')) {
-        return; // 直接放行，让浏览器自行处理
-    }
-      // 我们只对GET请求应用这个策略
-      if (event.request.method !== 'GET') {
+    // 对非GET请求或非导航请求，直接使用网络
+    if (event.request.method !== 'GET' || 
+        (event.request.url.startsWith('http') && !event.request.url.startsWith(self.location.origin))) {
         return;
-      }
+    }
+    
+    // 对字体文件等第三方资源使用“缓存优先”策略以提高性能
+    if (event.request.url.includes('fonts.googleapis.com') || event.request.url.includes('cdn.tailwindcss.com')) {
+        event.respondWith(
+            caches.open(CACHE_NAME).then(cache => {
+                return cache.match(event.request).then(response => {
+                    return response || fetch(event.request).then(networkResponse => {
+                        cache.put(event.request, networkResponse.clone());
+                        return networkResponse;
+                    });
+                });
+            })
+        );
+        return;
+    }
 
-      event.respondWith(
-          caches.open(CACHE_NAME).then(cache => {
-              return cache.match(event.request).then(response => {
-                  // Cache First: 如果缓存中存在，直接返回缓存的响应
-                  if (response) {
-                      return response;
-                  }
-
-                  // 如果缓存中不存在，则发起网络请求
-                  return fetch(event.request).then(networkResponse => {
-                      // 确保我们获取到了有效的响应再放入缓存
-                      if (networkResponse && networkResponse.status === 200) {
-                          cache.put(event.request, networkResponse.clone());
-                      }
-                      return networkResponse;
-                  }).catch(err => {
-                        // 网络请求失败时，可以返回一个离线备用页面（如果已缓存）
-                        console.warn('Fetch failed; returning offline page instead.', err);
-                        // return caches.match('/offline.html');
-                  });
-              });
-          })
+    // 对应用核心文件使用“网络优先，回退到缓存”策略
+    event.respondWith(
+        fetch(event.request)
+            .then(networkResponse => {
+                // 如果成功从网络获取，则更新缓存并返回新响应
+                return caches.open(CACHE_NAME).then(cache => {
+                    // 只缓存成功的GET请求
+                    if (networkResponse.ok) {
+                         cache.put(event.request, networkResponse.clone());
+                    }
+                    return networkResponse;
+                });
+            })
+            .catch(() => {
+                // 如果网络请求失败（例如离线），则从缓存中寻找匹配项
+                return caches.match(event.request);
+            })
     );
 });
 

@@ -139,6 +139,32 @@ async function checkFooterNotifications() {
     
 }
 
+/**
+ * 将所有需要在页面加载/显示时执行的任务封装起来
+ */
+async function performPageSetup() {
+    console.log("执行页面设置...");
+    await applyGlobalStyles();
+    await checkFooterNotifications();
+    calcHeaderHeight();
+}
+function calcHeaderHeight(){
+  const h = document.querySelector('.app-header')?.offsetHeight||56;
+  document.documentElement.style.setProperty('--header-height',`${h}px`);
+}
+
+// 1. 正常加载时执行
+document.addEventListener('DOMContentLoaded', performPageSetup);
+
+// 2. 关键修复：当页面从bfcache恢复或标签页重新可见时再次执行
+window.addEventListener('pageshow', (event) => {
+    // event.persisted 为 true 表示页面是从 bfcache 恢复的
+    if (event.persisted) {
+        console.log('页面从 bfcache 恢复，重新执行页面设置。');
+        performPageSetup();
+    }
+});
+
 
 // 在页面加载时，同时执行样式应用和后台模拟启动
 document.addEventListener('DOMContentLoaded', async() => {
@@ -146,9 +172,6 @@ document.addEventListener('DOMContentLoaded', async() => {
     checkFooterNotifications();
 });
 
-function calcHeaderHeight(){
-  const h = document.querySelector('.app-header')?.offsetHeight||56;
-  document.documentElement.style.setProperty('--header-height',`${h}px`);
-}
+
 window.addEventListener('resize',calcHeaderHeight);
 document.addEventListener('DOMContentLoaded',calcHeaderHeight);
