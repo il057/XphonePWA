@@ -1052,6 +1052,11 @@ self.addEventListener('install', event => {
 
 // 拦截网络请求并从缓存中提供服务
 self.addEventListener('fetch', event => {
+
+    // 如果请求的是.map文件，则直接走网络，不进行任何缓存操作
+    if (event.request.url.endsWith('.map')) {
+        return; // 直接放行，让浏览器自行处理
+    }
       // 我们只对GET请求应用这个策略
       if (event.request.method !== 'GET') {
         return;
