@@ -159,12 +159,37 @@
                     console.log(`页面状态变为 ${event.type}, 记录最后在线时间。`);
                 }
             };
+
+            async function registerPeriodicSync() {
+                // 检查浏览器是否支持Service Worker和定期同步
+                if ('serviceWorker' in navigator && 'PeriodicSyncManager' in window) {
+                    const registration = await navigator.serviceWorker.ready;
+                    try {
+                        // 请求权限 (大多数现代浏览器会自动同意，但检查一下更安全)
+                        const status = await navigator.permissions.query({name: 'periodic-background-sync'});
+                        if (status.state === 'granted') {
+                            // 注册一个名为 'run-simulation-tick' 的任务
+                            await registration.periodicSync.register('run-simulation-tick', {
+                                // 设置一个建议的最小间隔 (浏览器不一定会严格遵守)
+                                // 例如，每小时至少运行一次 (3600 秒)
+                                minInterval: 3600 * 1000, 
+                            });
+                            console.log('定期后台模拟任务已成功注册。');
+                        } else {
+                            console.log('定期后台模拟任务权限被拒绝。');
+                        }
+                    } catch (error) {
+                        console.error('注册定期后台模拟任务失败:', error);
+                    }
+                }
+            }
             document.addEventListener('visibilitychange', recordOfflineTime);
             window.addEventListener('pagehide', recordOfflineTime);     
         
             document.addEventListener('DOMContentLoaded', async () => {
                 updateMainScreenClock();
                 setInterval(updateMainScreenClock, 30000); 
+                await registerPeriodicSync();
             });
 
             window.addEventListener('load', async () => {

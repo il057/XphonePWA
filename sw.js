@@ -509,7 +509,80 @@ ${recentContextSummary}
             //在循环内部获取最新的group数据进行更新
             const groupToUpdate = await db.chats.get(group.id);
             if (groupToUpdate) {
-                groupToUpdate.history.push(message);
+                if (action.type === 'send_sticker') {
+                      // --- START: MODIFICATION FOR STICKERS ---
+                      if (!action.stickerName) {
+                          console.warn(`[SW-Group] AI ${actor.name} 尝试发送表情但缺少名称。`, action);
+                          continue;
+                      }
+                      
+                      const stickerToSend = await db.userStickers.where('name').equals(action.stickerName).first();
+                      
+                      const message = stickerToSend 
+                          ? {
+                              role: 'assistant', 
+                              senderName: actor.name, 
+                              type: 'sticker',
+                              content: stickerToSend.url, 
+                              meaning: stickerToSend.name, 
+                              timestamp: Date.now()
+                            }
+                          : {
+                              role: 'assistant', 
+                              senderName: actor.name, 
+                              type: 'text',
+                              content: `[表情：${action.stickerName}]`, 
+                              timestamp: Date.now()
+                            };
+
+                      groupToUpdate.history.push(message);
+                  } else if (action.type === 'red_packet') {
+                      // 1. 验证红包金额
+                      const packetAmount = parseFloat(action.amount);
+                      if (isNaN(packetAmount) || packetAmount <= 0) {
+                          console.warn(`[SW-Group] AI ${actor.name} 尝试发送无效红包，已跳过。`, action);
+                          continue; // 跳过此动作
+                      }
+                      const message = {
+                          role: 'assistant', senderName: actor.name, type: 'red_packet', packetType: action.packetType,
+                          timestamp: new Date(), totalAmount: packetAmount, count: action.count || 1,
+                          greeting: action.greeting, receiverName: action.receiverName,
+                          claimedBy: {}, isFullyClaimed: false,
+                      };
+                      groupToUpdate.history.push(message);
+                      
+                  } else if (action.type === 'open_red_packet') {
+                      // 2. 实现AI领取红包的逻辑
+                      const packet = groupToUpdate.history.find(m => toMillis(m.timestamp) === action.packet_timestamp);
+                      if (packet && packet.type === 'red_packet') {
+                          const hasClaimed = packet.claimedBy && packet.claimedBy[actor.name];
+                          const isFullyClaimed = packet.count <= Object.keys(packet.claimedBy || {}).length;
+                          const isForMe = packet.packetType !== 'direct' || packet.receiverName === actor.name;
+
+                          if (!isFullyClaimed && !hasClaimed && isForMe) {
+                              const remainingCount = packet.count - Object.keys(packet.claimedBy || {}).length;
+                              const remainingAmount = packet.totalAmount - Object.values(packet.claimedBy || {}).reduce((s, v) => s + (v.amount || 0), 0);
+                              let claimedAmount = (remainingCount === 1) ? remainingAmount : parseFloat((Math.random() * (remainingAmount / remainingCount * 1.5) + 0.01).toFixed(2));
+                              
+                              if (!packet.claimedBy) packet.claimedBy = {};
+                              //保存领取时间和金额
+                              packet.claimedBy[actor.name] = { amount: Math.max(0.01, claimedAmount), timestamp: Date.now() };
+
+                              if (Object.keys(packet.claimedBy).length >= packet.count) packet.isFullyClaimed = true;
+                          }
+                      }
+                      // 领取红包是一个静默动作，不需要在聊天中添加新消息
+                      
+                  } else {
+                      // 3. 处理其他类型的消息
+                      const message = {
+                          role: 'assistant', senderName: actor.name, type: action.type, timestamp: Date.now(),
+                          ...(action.type === 'text' && { content: action.content }),
+                          ...(action.type === 'send_sticker' && { content: "一个表情", meaning: action.stickerName }),
+                          ...(action.type === 'waimai_request' && { ...action, status: 'pending' }),
+                      };
+                      groupToUpdate.history.push(message);
+                  }
                 groupToUpdate.unreadCount = (groupToUpdate.unreadCount || 0) + 1;
                 await db.chats.put(groupToUpdate);
                 
@@ -627,6 +700,67 @@ async function handleAiFriendApplication(chatId) {
         }
 }
 
+/**
+ * @description 新增: 专门为后台同步使用的“心跳”函数。
+ * (这是从 simulationEngine.js 复制并适配过来的)
+ */
+async function runActiveSimulationTickForSync() {
+    console.log("[SW Sync] 模拟器心跳 Tick...");
+    // 检查全局设置，是否启用后台活动
+    const settings = await db.globalSettings.get('main');
+    if (!settings?.enableBackgroundActivity) {
+        return;
+    }
+
+    const privateChatProbability = settings.activeSimTickProb || 0.3;
+    const groupChatProbability = settings.groupActiveSimTickProb || 0.15;
+
+    const allSingleChats = await db.chats.where('isGroup').equals(0).toArray();
+    const eligibleChats = allSingleChats.filter(chat => !chat.blockStatus || (chat.blockStatus.status !== 'blocked_by_ai' && chat.blockStatus.status !== 'blocked_by_user'));
+    if (eligibleChats.length > 0) {
+        eligibleChats.sort(() => 0.5 - Math.random());
+        const chatsToWake = eligibleChats.slice(0, Math.min(eligibleChats.length, 2)); 
+        for (const chat of chatsToWake) {
+           if (chat.blockStatus?.status === 'blocked_by_user') {
+                const blockedTimestamp = chat.blockStatus.timestamp;
+                if (!blockedTimestamp) continue;
+
+                const cooldownHours = settings.blockCooldownHours || 1;
+                const cooldownMilliseconds = cooldownHours * 60 * 60 * 1000;
+                const timeSinceBlock = Date.now() - blockedTimestamp;
+
+                if (timeSinceBlock > cooldownMilliseconds) {
+                    console.log(`角色 "${chat.name}" 的冷静期已过...`);
+                    chat.blockStatus.status = 'pending_system_reflection';
+                    await db.chats.put(chat);
+                    triggerAiFriendApplication(chat.id);
+                }
+                continue;
+           } else {
+                const lastMessage = chat.history.slice(-1)[0];
+                let isReactionary = false;
+                if (lastMessage && lastMessage.isHidden && lastMessage.role === 'system' && lastMessage.content.includes('[系统提示：')) {
+                    isReactionary = true;
+                }
+
+                if (!chat.blockStatus && (isReactionary || Math.random() < privateChatProbability)) {
+                    console.log(`角色 "${chat.name}" 被唤醒 (原因: ${isReactionary ? '动态互动' : '随机'})，准备行动...`);
+                    await handleInactiveAiAction(chat.id);
+                }
+           }
+        }
+    }
+    const allGroupChats = await db.chats.where('isGroup').equals(1).toArray();
+    if (allGroupChats.length > 0) {
+        for (const group of allGroupChats) {
+            if (group.members && group.members.length > 0 && Math.random() < groupChatProbability) {
+                const actor = group.members[Math.floor(Math.random() * group.members.length)];
+                await handleInactiveGroupAiAction(actor, group);
+            }
+        }
+    }
+}
+
 self.addEventListener('notificationclick', event => {
     event.notification.close(); // 关闭通知
 
@@ -650,6 +784,15 @@ self.addEventListener('notificationclick', event => {
             }
         })
     );
+});
+
+self.addEventListener('periodicsync', (event) => {
+    // 检查我们注册的任务标签
+    if (event.tag === 'run-simulation-tick') {
+        console.log('[SW] 定期同步事件触发，开始执行后台心跳...');
+        // 使用 waitUntil 确保在心跳函数完成前，Service Worker 不会被终止
+        event.waitUntil(runActiveSimulationTickForSync());
+    }
 });
 
 // --- Service Worker 生命周期事件---

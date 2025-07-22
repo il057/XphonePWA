@@ -2605,24 +2605,29 @@ function showRedPacketDetails(packet) {
     const claimedEntries = Object.entries(claimedBy);
     
     let luckyKing = { name: '', amount: -1 };
-    if (packet.packetType === 'lucky' && packet.isFullyClaimed && claimedEntries.length > 1) {
-        claimedEntries.forEach(([name, amount]) => {
-            if (amount > luckyKing.amount) {
-                luckyKing = { name, amount };
+    if (packet.packetType === 'lucky' && packet.isFullyClaimed && claimedEntries.length > 0) { // 至少要有一个人领取
+        claimedEntries.forEach(([name, claimData]) => {
+            if (claimData.amount > luckyKing.amount) {
+                luckyKing = { name, amount: claimData.amount };
             }
         });
     }
 
-    claimedEntries.sort((a, b) => b[1] - a[1]).forEach(([name, amount]) => {
+    // 按领取金额排序
+    claimedEntries.sort((a, b) => b[1].amount - a[1].amount).forEach(([name, claimData]) => {
         const item = document.createElement('div');
         item.className = 'rp-details-item flex items-center justify-between py-2 border-b';
-        const luckyTag = (luckyKing.name && name === luckyKing.name) ? '<span class="lucky-king-tag text-xs bg-yellow-300 text-yellow-800 font-bold px-2 py-0.5 rounded-md ml-2">手气王</span>' : '';
+        const luckyTag = (luckyKing.name && name === luckyKing.name) ? '<span class="lucky-king-tag ...">手气王</span>' : '';
+        
+        // 使用 claimData.timestamp 来显示领取时间
+        const claimTime = new Date(claimData.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
         item.innerHTML = `
             <div>
                 <p class="font-semibold text-gray-800">${name}</p>
-                <p class="text-xs text-gray-500">${new Date(packet.timestamp).toLocaleTimeString()}</p>
+                <p class="text-xs text-gray-500">${claimTime}</p> 
             </div>
-            <div class="font-semibold text-gray-800">${amount.toFixed(2)} 元 ${luckyTag}</div>
+            <div class="font-semibold text-gray-800">${claimData.amount.toFixed(2)} 元 ${luckyTag}</div>
         `;
         listEl.appendChild(item);
     });
