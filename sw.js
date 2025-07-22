@@ -40,6 +40,9 @@ self.addEventListener('message', (event) => {
 
     // 使用 event.waitUntil() 确保Service Worker在异步任务完成前保持活动状态
     switch (task.type) {
+        case 'RUN_OFFLINE_SIMULATION':
+            event.waitUntil(runOfflineSimulation());
+            break;
         case 'TRIGGER_INACTIVE_AI_ACTION':
             event.waitUntil(handleInactiveAiAction(task.charId));
             break;
@@ -569,6 +572,13 @@ ${recentContextSummary}
                               packet.claimedBy[actor.name] = { amount: Math.max(0.01, claimedAmount), timestamp: Date.now() };
 
                               if (Object.keys(packet.claimedBy).length >= packet.count) packet.isFullyClaimed = true;
+                              const systemMessage = {
+                                  role: 'system',
+                                  content: `[系统提示：${actorName} 领取了 ${packet.senderName} 的红包。]`,
+                                  timestamp: new Date(messageTimestamp++),
+                                  isHidden: true
+                              };
+                              currentChat.history.push(systemMessage);
                           }
                       }
                       // 领取红包是一个静默动作，不需要在聊天中添加新消息
@@ -578,7 +588,6 @@ ${recentContextSummary}
                       const message = {
                           role: 'assistant', senderName: actor.name, type: action.type, timestamp: Date.now(),
                           ...(action.type === 'text' && { content: action.content }),
-                          ...(action.type === 'send_sticker' && { content: "一个表情", meaning: action.stickerName }),
                           ...(action.type === 'waimai_request' && { ...action, status: 'pending' }),
                       };
                       groupToUpdate.history.push(message);
@@ -760,6 +769,192 @@ async function runActiveSimulationTickForSync() {
         }
     }
 }
+/**
+ * 离线模拟引擎的主函数
+ * 当用户重新打开应用时调用此函数。
+ */
+async function runOfflineSimulation() {
+    const apiConfig = await db.apiConfig.get('main');
+    const globalSettings = await db.globalSettings.get('main') || {};
+    const lastOnline = globalSettings.lastOnlineTime || Date.now();
+    const now = Date.now();
+    const elapsedHours = (now - lastOnline) / (1000 * 60 * 60);
+    const simThreshold = globalSettings.offlineSimHours || 1;
+
+    // 计算一周前的时间戳
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    // 删除所有时间戳早于一周前的简报记录
+    await db.offlineSummary.where('timestamp').below(oneWeekAgo).delete();
+
+    // 如果离线时间未达到阈值，则不执行模拟
+    if (elapsedHours < simThreshold) {
+        console.log(`离线时间 ${elapsedHours.toFixed(2)} 小时，未达到模拟阈值 ${simThreshold} 小时。`);
+        return;
+    }
+
+    console.log(`离线 ${elapsedHours.toFixed(2)} 小时，开始模拟...`);
+
+    // 1. 按分组获取所有角色
+    const allChats = await db.chats.toArray();
+    const allGroups = await db.xzoneGroups.toArray();
+    const allWorldBooks = await db.worldBooks.toArray();
+    const groupsMap = new Map(allGroups.map(g => [g.id, g]));
+    const charsByGroup = {};
+
+    allChats.forEach(c => {
+        if (!c.isGroup && c.groupId) {
+            if (!charsByGroup[c.groupId]) charsByGroup[c.groupId] = [];
+            charsByGroup[c.groupId].push(c);
+        }
+    });
+
+    // 2. 遍历每个分组，独立进行模拟
+    for (const groupId in charsByGroup) {
+        const group = groupsMap.get(parseInt(groupId));
+        const groupName = groupsMap.get(parseInt(groupId))?.name || `分组${groupId}`;
+        const groupMembers = charsByGroup[groupId];
+        if (groupMembers.length < 2) continue; // 至少需要2个角色才能有互动
+
+        console.log(`[SW] 正在模拟【${groupName}】...`);
+
+        // 3. 准备调用AI所需的数据
+        // 获取该组内所有角色的关系
+        const memberIds = groupMembers.map(m => m.id);
+        const relationships = await db.relationships
+            .where('sourceCharId').anyOf(memberIds)
+            .and(r => memberIds.includes(r.targetCharId))
+            .toArray();
+        
+        // 简化关系描述
+        const relationsSnapshot = relationships.map(r => {
+            const sourceName = allChats.find(c=>c.id === r.sourceCharId)?.name;
+            const targetName = allChats.find(c=>c.id === r.targetCharId)?.name;
+            return `${sourceName} 与 ${targetName} 的关系是 ${r.type}, 好感度 ${r.score}。`;
+        }).join('\n');
+
+        // 获取角色性格
+        const personas = groupMembers.map(m => `- ${m.name}: ${m.settings.aiPersona}`).join('\n');
+
+        // 4. 构建Prompt
+        const systemPrompt = `
+你是一个世界模拟器。距离上次模拟已经过去了 ${elapsedHours.toFixed(1)} 小时。
+请基于以下信息，模拟并总结在这段时间内，【${groupName}】这个社交圈子里发生的【1-3件】最重要的互动或关系变化。
+
+【当前世界状态】
+1. 角色关系快照:
+${relationsSnapshot || '角色之间还没有建立明确的关系。'}
+
+2. 角色性格与动机:
+${personas}
+
+【你的任务】
+模拟并总结这 ${elapsedHours.toFixed(1)} 小时内可能发生的互动。重点关注会导致关系变化的事件。
+
+【输出要求】
+请严格按照以下JSON格式返回你的模拟结果，不要有任何多余的文字：
+{
+    "relationship_updates": [
+    { "char1_name": "角色名1", "char2_name": "角色名2", "score_change": -5, "reason": "模拟出的具体事件或原因。" }
+    ],
+  "new_events_summary": [
+    "用一句话总结发生的关键事件1。",
+    "用一句话总结发生的关键事件2。"
+    ]
+    "personal_milestones": [
+    { "character_name": "角色名", "milestone": "在TA的个人追求上取得的进展、挫折或发现。例如：'在研究古代遗迹时，有了一个惊人的发现。'" }
+]
+}
+        `;
+
+        try {
+            const response = await fetch(`${apiConfig.proxyUrl}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
+                body: JSON.stringify({
+                    model: apiConfig.model,
+                    messages: [{ role: 'system', content: systemPrompt }],
+                    temperature: 0.8,
+                    response_format: { type: "json_object" }
+                })
+            });
+
+            if (!response.ok) throw new Error(`API for group ${groupName} failed.`);
+            
+            const result = await response.json();
+            const simulationData = JSON.parse(result.choices[0].message.content);
+
+            // 5. 应用模拟结果
+            // 更新关系分数
+            for (const update of simulationData.relationship_updates) {
+                const char1 = allChats.find(c => c.name === update.char1_name);
+                const char2 = allChats.find(c => c.name === update.char2_name);
+                if (char1 && char2) {
+                    await updateRelationshipScore(char1.id, char2.id, update.score_change);
+                }
+            }
+            // 记录事件日志
+            for (const summary of simulationData.new_events_summary) {
+                await db.eventLog.add({
+                    timestamp: Date.now(),
+                    type: 'simulation',
+                    content: summary,
+                    groupId: parseInt(groupId)
+                });
+            }
+            if (simulationData.new_events_summary && simulationData.new_events_summary.length > 0) {
+                // 写入离线总结
+                await db.offlineSummary.put({
+                    id: groupName,
+                    events: simulationData.new_events_summary,
+                    timestamp: Date.now()
+                });
+
+                // 查找并更新《编年史》
+                if (group && group.worldBookIds) {
+                    const associatedBooks = allWorldBooks.filter(wb => group.worldBookIds.includes(wb.id));
+                    const chronicleBook = associatedBooks.find(wb => wb.name.includes('编年史'));
+                    
+                    if (chronicleBook) {
+                        // 1. 获取更精确的时间
+                        const eventDateTime = new Date().toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        
+                        // 2. 格式化好感度变化
+                        let relationshipChangesSummary = '';
+                        if (simulationData.relationship_updates && simulationData.relationship_updates.length > 0) {
+                            relationshipChangesSummary = simulationData.relationship_updates.map(update => 
+                                `- ${update.char1_name} 与 ${update.char2_name} 的关系发生了变化 (好感度 ${update.score_change > 0 ? '+' : ''}${update.score_change})，因为: ${update.reason}`
+                            ).join('\n');
+                        }
+
+                        // 3. 格式化主要事件
+                        const mainEventsSummary = simulationData.new_events_summary.map(event => `- ${event}`).join('\n');
+
+                        // 4. 组合成新的、更详细的条目
+                        const chronicleEntry = `\n\n【${eventDateTime}】\n` +
+                                            `${relationshipChangesSummary ? `\n[关系变化]\n${relationshipChangesSummary}\n` : ''}` +
+                                            `\n[主要事件]\n${mainEventsSummary}`;
+
+                        await db.worldBooks.update(chronicleBook.id, {
+                            content: (chronicleBook.content || '') + chronicleEntry
+                        });
+                        console.log(`已将详细事件更新至《${chronicleBook.name}》。`);
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error(`[SW] 模拟分组【${groupName}】时出错:`, error);
+        }
+    }
+
+     // 6. 模拟结束后，更新最后在线时间
+    await db.globalSettings.update('main', { lastOnlineTime: now });
+    console.log("[SW] 离线模拟完成，已更新最后在线时间。");
+
+    // 7. (可选) 通知所有页面模拟已完成
+    notificationChannel.postMessage({ type: 'offline_simulation_complete' });
+}
+
 
 self.addEventListener('notificationclick', event => {
     event.notification.close(); // 关闭通知

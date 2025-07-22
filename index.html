@@ -141,7 +141,7 @@
 
         <script type = 'module'>
             import { db } from './db.js';
-            import { runOfflineSimulation, startActiveSimulation } from './simulationEngine.js';
+            import { startActiveSimulation } from './simulationEngine.js';
             
             function updateMainScreenClock() {
                 const now = new Date();
@@ -192,8 +192,23 @@
                 await registerPeriodicSync();
             });
 
+            // 从主页面触发Service Worker执行离线模拟
+            async function triggerOfflineSimulationInSW() {
+                // 确保Service Worker已经激活
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    console.log('向Service Worker发送离线模拟任务...');
+                    navigator.serviceWorker.controller.postMessage({
+                        type: 'RUN_OFFLINE_SIMULATION'
+                    });
+                } else {
+                    console.error('Service Worker未激活，无法执行离线模拟。');
+                    // 可选：在这里可以放一个备用方案，比如提示用户刷新页面
+                }
+            }
+        
             window.addEventListener('load', async () => {
-                 await runOfflineSimulation();
+                 // 不再直接调用，而是发送消息给SW
+                 await triggerOfflineSimulationInSW();
             });
 
             if ('serviceWorker' in navigator) {
