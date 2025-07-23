@@ -1,6 +1,7 @@
 // 1. 引入Dexie库，让Service Worker能访问IndexedDB
 importScripts('./dexie.min.js'); 
 
+
 // 2. 重新定义数据库结构。
 // 这是在Service Worker环境下的必要步骤，因为无法直接`import` ES模块。
 const db = new Dexie('ChatDB');
@@ -1038,19 +1039,39 @@ const urlsToCache = [
   './contactsPicker.html'
 ];
 
-// 安装 Service Worker 并缓存文件
+// install 事件用于预缓存核心文件**
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+    console.log('[SW] Install event');
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then(cache => {
+                console.log('[SW] Caching app shell');
+                return cache.addAll(urlsToCache);
+            })
+    );
 });
 
-// 拦截网络请求并从缓存中提供服务
-self.addEventListener('fetch', event => {
+// 安装 Service Worker 并缓存文件
+self.addEventListener('activate', event => {
+    console.log('[SW] Activate event');
+    event.waitUntil(
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (cacheName !== CACHE_NAME) {
+                        console.log('[SW] Deleting old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        }).then(() => {
+            console.log('[SW] Claiming clients');
+            return self.clients.claim();
+        })
+    );
+});
+
+sself.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -1061,21 +1082,5 @@ self.addEventListener('fetch', event => {
         // 否则，正常发起网络请求
         return fetch(event.request);
       })
-  );
-});
-
-// 激活 Service Worker 并清理旧缓存
-self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
   );
 });

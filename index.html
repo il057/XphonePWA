@@ -139,112 +139,87 @@
             </div>
         </footer>
 
-        <script type = 'module'>
-            import { db, apiLock } from './db.js';
-            import { startActiveSimulation } from './simulationEngine.js';
-            
-            function updateMainScreenClock() {
-                const now = new Date();
-                const dateOpts = { weekday: 'long', month: 'long', day: 'numeric' };
-                const mainTimeEl = document.getElementById('main-time');
-                const mainDateEl = document.getElementById('main-date');
+<script type = 'module'>
+    import { db, apiLock, openDatabase } from './db.js'; // 确保引入了 openDatabase
+    import { initializeGlobalState } from './applyGlobalStyles.js';
+
+    // 页面加载时，先初始化全局状态（这也会打开数据库）
+    await initializeGlobalState();
+    
+    function updateMainScreenClock() {
+        const now = new Date();
+        const dateOpts = { weekday: 'long', month: 'long', day: 'numeric' };
+        const mainTimeEl = document.getElementById('main-time');
+        const mainDateEl = document.getElementById('main-date');
+
+        if (mainTimeEl) mainTimeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
+        if (mainDateEl) mainDateEl.textContent = now.toLocaleDateString('zh-CN', dateOpts);
+    }
+
+    const recordOfflineTime = async () => {
+        // 确保数据库已打开再执行更新
+        const dbInstance = await openDatabase(); 
+        if ((document.visibilityState === 'hidden' || event.type === 'pagehide') && dbInstance) {
+            // 使用 put 方法确保即使 'main' 不存在也能创建
+            await dbInstance.globalSettings.put({ id: 'main', lastOnlineTime: Date.now() });
+            console.log(`页面状态变为 ${event.type}, 记录最后在线时间。`);
+        }
+    };
+
+    /**
+     * 只有在Service Worker完全就绪后才触发离线模拟
+     */
+    async function triggerOfflineSimulationWhenReady() {
+        if (!('serviceWorker' in navigator)) {
+            console.log('此浏览器不支持 Service Worker。');
+            return;
+        }
         
-                if (mainTimeEl) mainTimeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
-                if (mainDateEl) mainDateEl.textContent = now.toLocaleDateString('zh-CN', dateOpts);
+        try {
+            // navigator.serviceWorker.ready 是一个Promise，它会等待SW激活
+            const registration = await navigator.serviceWorker.ready;
+            console.log('Service Worker 已就绪, 准备发送离线模拟任务。');
+
+            // 尝试获取API锁
+            if (!(await apiLock.acquire('offline_sim'))) {
+                console.log("无法获取 'offline_sim' 锁，可能已有高优先级任务在运行。");
+                return;
             }
 
-            const recordOfflineTime = async () => {
-                if (document.visibilityState === 'hidden' || event.type === 'pagehide') {
-                    await db.globalSettings.update('main', { lastOnlineTime: Date.now() });
-                    console.log(`页面状态变为 ${event.type}, 记录最后在线时间。`);
-                }
-            };
-
-            async function registerPeriodicSync() {
-                // 检查浏览器是否支持Service Worker和定期同步
-                if ('serviceWorker' in navigator && 'PeriodicSyncManager' in window) {
-                    const registration = await navigator.serviceWorker.ready;
-                    try {
-                        // 请求权限 (大多数现代浏览器会自动同意，但检查一下更安全)
-                        const status = await navigator.permissions.query({name: 'periodic-background-sync'});
-                        if (status.state === 'granted') {
-                            // 注册一个名为 'run-simulation-tick' 的任务
-                            await registration.periodicSync.register('run-simulation-tick', {
-                                // 设置一个建议的最小间隔 (浏览器不一定会严格遵守)
-                                // 例如，每小时至少运行一次 (3600 秒)
-                                minInterval: 3600 * 1000, 
-                            });
-                            console.log('定期后台模拟任务已成功注册。');
-                        } else {
-                            console.log('定期后台模拟任务权限被拒绝。');
-                        }
-                    } catch (error) {
-                        console.error('注册定期后台模拟任务失败:', error);
-                    }
-                }
-            }
-            document.addEventListener('visibilitychange', recordOfflineTime);
-            window.addEventListener('pagehide', recordOfflineTime);     
-        
-            document.addEventListener('DOMContentLoaded', async () => {
-                updateMainScreenClock();
-                setInterval(updateMainScreenClock, 30000); 
-                await registerPeriodicSync();
-            });
-
-            // 从主页面触发Service Worker执行离线模拟
-            async function triggerOfflineSimulationInSW() {
-                // Ensure Service Worker is ready
-                if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
-                    console.error('Service Worker not active, cannot run offline simulation.');
-                    return;
-                }
-
-                // Wait for a moment to let any initial page loads settle
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                // If user chat is active, wait until it's done.
-                if (apiLock.getCurrentLock() === 'user_chat') {
-                    console.log("User chat is active, delaying offline simulation.");
-                    while (apiLock.getCurrentLock() === 'user_chat') {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
-                }
-
-                // Try to acquire the medium-priority lock
-                if (!(await apiLock.acquire('offline_sim'))) {
-                    console.log("Could not acquire 'offline_sim' lock. A higher priority task is running.");
-                    return;
-                }
-
-                try {
-                    console.log('Sending offline simulation task to Service Worker...');
-                    navigator.serviceWorker.controller.postMessage({
+            try {
+                // 向已激活的SW发送消息
+                if (registration.active) {
+                    registration.active.postMessage({
                         type: 'RUN_OFFLINE_SIMULATION'
                     });
-                } finally {
-                    // The simulation in SW is fire-and-forget from the main thread's perspective.
-                    // We release the lock immediately after sending the message.
-                    // The actual API calls inside the SW will run independently,
-                    // but we have prevented them from starting if a user chat was active.
-                    apiLock.release('offline_sim');
                 }
+            } finally {
+                // 立即释放锁，因为任务已转交给SW
+                apiLock.release('offline_sim');
             }
-        
-            window.addEventListener('load', async () => {
-                 // 不再直接调用，而是发送消息给SW
-                 await triggerOfflineSimulationInSW();
-            });
+        } catch (error) {
+            console.error('触发离线模拟失败:', error);
+        }
+    }
+    
+    // --- 启动逻辑 ---
+    updateMainScreenClock();
+    setInterval(updateMainScreenClock, 30000);
 
-            if ('serviceWorker' in navigator) {
-              window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').then(registration => {
-                  console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                }, err => {
-                  console.log('ServiceWorker registration failed: ', err);
-                });
-              });
-            }
-        </script>
+    document.addEventListener('visibilitychange', recordOfflineTime);
+    window.addEventListener('pagehide', recordOfflineTime);
+
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').then(registration => {
+                console.log('ServiceWorker 注册成功，作用域为: ', registration.scope);
+                // 在注册成功后，调用我们新的、更安全的触发函数
+                triggerOfflineSimulationWhenReady();
+            }).catch(err => {
+                console.log('ServiceWorker 注册失败: ', err);
+            });
+        });
+    }
+</script>
 </body>
 </html>
