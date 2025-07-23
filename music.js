@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="font-semibold text-lg mb-2">登录第2步：复制授权码</p>
                     <p class="text-gray-600 mb-4">请复制下方代码，然后手动返回Xphone应用，并粘贴到音乐页面的输入框中。</p>
                     <input type="text" readonly value="${code}" onclick="this.select(); document.execCommand('copy'); alert('已复制到剪贴板!');" class="w-full p-2 text-center border rounded-md bg-gray-100 mb-4 cursor-pointer">
-                    <a href="index.html" class="mt-2 inline-block text-blue-500 hover:underline">手动返回应用</a>
             </div>`;
         } else {
             // 场景B: 其他所有设备（如Android, PC等），或者在某些意外情况下，执行原来的自动跳转逻辑
@@ -73,8 +72,15 @@ async function renderStatus() {
                     <img src="${profile.images?.[0]?.url || ''}" class="w-24 h-24 rounded-full mx-auto mb-4 shadow-lg">
                     <p class="font-semibold text-lg">已作为 ${profile.display_name} 登录</p>
                     <p class="text-gray-500 mt-2">现在可以前往任意聊天室<br>发起“一起听”功能了</p>
+                    <div class="mt-8 pt-6 border-t">
+                        <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-5 rounded-full">
+                            登出账号
+                        </button>
+                    </div>
                 </div>
             `;
+            document.getElementById('logout-btn').addEventListener('click', spotifyManager.logout);
+
         } catch (e) {
              musicContainer.innerHTML = `<p class="text-red-500">加载用户信息失败，请稍后再试。</p>`;
         }

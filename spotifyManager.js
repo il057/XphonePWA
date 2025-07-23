@@ -99,7 +99,7 @@ export async function login() {
     document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
-function logout() {
+export function logout() {
     accessToken = null;
     localStorage.removeItem('spotify_access_token');
     localStorage.removeItem('spotify_refresh_token');
