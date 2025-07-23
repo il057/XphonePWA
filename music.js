@@ -11,12 +11,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // **关键的环境检测**
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    const isIosPWA = isIOS && isStandalone;
 
     // --- 逻辑分发：处理来自Spotify的回调 ---
     if (code) {
-        if (isIosPWA) {
-            // 场景A: 如果是iOS PWA，显示手动复制界面
+        // 检查是否是iOS设备，并且当前不是在PWA(standalone)模式下运行
+        // 这精确地匹配了从Spotify授权后跳回Safari的场景
+        if (isIOS && !isStandalone) {
+            // 场景A: 如果是iOS设备上的浏览器，显示手动复制界面
             musicContainer.innerHTML = `
                 <div class="text-center p-4">
                     <p class="font-semibold text-lg mb-2">登录第2步：复制授权码</p>
@@ -25,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <a href="index.html" class="mt-2 inline-block text-blue-500 hover:underline">手动返回应用</a>
             </div>`;
         } else {
-            // 场景B: 其他所有设备，执行原来的自动跳转逻辑
+            // 场景B: 其他所有设备（如Android, PC等），或者在某些意外情况下，执行原来的自动跳转逻辑
             window.location.replace(`index.html?spotify_code=${code}`);
         }
         return; // 停止后续脚本执行
