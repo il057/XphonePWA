@@ -992,7 +992,7 @@ self.addEventListener('periodicsync', (event) => {
 
 // --- Service Worker 生命周期事件---
 
-const CACHE_NAME = 'xphone-cache-v3';
+const CACHE_NAME = 'xphone-cache-v4';
 const urlsToCache = [
   './',
   './index.html',
@@ -1039,77 +1039,43 @@ const urlsToCache = [
 ];
 
 // 安装 Service Worker 并缓存文件
-self.addEventListener('activate', event => {
-    const cacheWhitelist = [CACHE_NAME];
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheWhitelist.indexOf(cacheName) === -1) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        }).then(() => self.clients.claim()) // 确保 Service Worker 成为所有客户端的控制者
-    );
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        console.log('Opened cache');
+        return cache.addAll(urlsToCache);
+      })
+  );
 });
 
 // 拦截网络请求并从缓存中提供服务
 self.addEventListener('fetch', event => {
-    // 对非GET请求或非导航请求，直接使用网络
-    if (event.request.method !== 'GET' || 
-        (event.request.url.startsWith('http') && !event.request.url.startsWith(self.location.origin))) {
-        return;
-    }
-    
-    // 对字体文件等第三方资源使用“缓存优先”策略以提高性能
-    if (event.request.url.includes('fonts.googleapis.com') || event.request.url.includes('cdn.tailwindcss.com')) {
-        event.respondWith(
-            caches.open(CACHE_NAME).then(cache => {
-                return cache.match(event.request).then(response => {
-                    return response || fetch(event.request).then(networkResponse => {
-                        cache.put(event.request, networkResponse.clone());
-                        return networkResponse;
-                    });
-                });
-            })
-        );
-        return;
-    }
-
-    // 对应用核心文件使用“网络优先，回退到缓存”策略
-    event.respondWith(
-        fetch(event.request)
-            .then(networkResponse => {
-                // 如果成功从网络获取，则更新缓存并返回新响应
-                return caches.open(CACHE_NAME).then(cache => {
-                    // 只缓存成功的GET请求
-                    if (networkResponse.ok) {
-                         cache.put(event.request, networkResponse.clone());
-                    }
-                    return networkResponse;
-                });
-            })
-            .catch(() => {
-                // 如果网络请求失败（例如离线），则从缓存中寻找匹配项
-                return caches.match(event.request);
-            })
-    );
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        // 如果缓存中有匹配的响应，则返回它
+        if (response) {
+          return response;
+        }
+        // 否则，正常发起网络请求
+        return fetch(event.request);
+      })
+  );
 });
 
 // 激活 Service Worker 并清理旧缓存
 self.addEventListener('activate', event => {
-    const cacheWhitelist = [CACHE_NAME];
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheWhitelist.indexOf(cacheName) === -1) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
+  const cacheWhitelist = [CACHE_NAME];
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheWhitelist.indexOf(cacheName) === -1) {
+            return caches.delete(cacheName);
+          }
         })
-    );
+      );
+    })
+  );
 });
-
