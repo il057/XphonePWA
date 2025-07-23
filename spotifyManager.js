@@ -85,18 +85,31 @@ export async function refreshAccessToken(refreshToken) {
 export function isLoggedIn() { return !!accessToken; }
 
 export async function login() {
-    const verifier = generateCodeVerifier(128);
-    const challenge = await generateCodeChallenge(verifier);
-    localStorage.setItem("spotify_code_verifier", verifier);
-    const params = new URLSearchParams({
-        client_id: clientId,
-        response_type: 'code',
-        redirect_uri: redirectUri,
-        scope: 'streaming user-read-email user-read-private playlist-read-private user-modify-playback-state',
-        code_challenge_method: 'S256',
-        code_challenge: challenge,
-    });
-    document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
+    try {
+        const verifier = generateCodeVerifier(128);
+        const challenge = await generateCodeChallenge(verifier);
+        localStorage.setItem("spotify_code_verifier", verifier);
+        const params = new URLSearchParams({
+            client_id: clientId,
+            response_type: 'code',
+            redirect_uri: redirectUri,
+            scope: 'streaming user-read-email user-read-private playlist-read-private user-modify-playback-state',
+            code_challenge_method: 'S256',
+            code_challenge: challenge,
+        });
+        
+        const authUrl = `https://accounts.spotify.com/authorize?$${params.toString()}`;
+
+        // 原来的代码是: document.location = authUrl;
+        // 修改后的代码：
+        // 这会强制在设备的应用浏览器新标签页中打开链接，而不是PWA内部的WebView
+        window.open(authUrl, '_blank', 'noopener,noreferrer');
+
+    } catch (error) {
+        // 增加错误捕获，以防是PKCE生成环节出的问题
+        console.error("Failed to generate login URL:", error);
+        alert("创建登录链接失败，请检查网络连接或浏览器安全设置。");
+    }
 }
 
 export function logout() {
