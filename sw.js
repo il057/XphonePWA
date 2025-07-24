@@ -299,7 +299,7 @@ async function handleInactiveAiAction(charId) {
                 **保持沉默示例:**
                 \`\`\`json
                 {
-                  "response": []
+                "actions": []
                 }
                 \`\`\`
                 `;
@@ -333,7 +333,7 @@ async function handleInactiveAiAction(charId) {
         
                 const responseArray = parsedObject.actions;
                 if (responseArray.length === 0) {
-                    console.log(`[SW] 角色 "${actor.name}" 决定保持沉默。`);
+                    console.log(`[SW] 角色 "${chat.name}" 决定保持沉默。`);
                     return;
                 }
         
@@ -341,6 +341,10 @@ async function handleInactiveAiAction(charId) {
                     const actorName = action.name || chat.name;
                      switch (action.type) {
                         case 'text':
+                            if (!action.content) {
+                                console.warn(`[SW] 角色 "${chat.name}" 尝试发送空消息，已跳过。`, action);
+                                break; // 使用 break 来代替 continue，因为我们在 switch 语句中
+                            }
                             const textMessage = {
                                 role: 'assistant',
                                 senderName: actorName,
@@ -444,7 +448,7 @@ async function handleInactiveAiAction(charId) {
                     }
                 }
             } catch (error) {
-                console.error(`角色 "${chat.name}" 的独立行动失败:`, error.message, error.stack);
+                console.error(`角色 "${chat.name}" 的独立行动失败:`, error);
             }
     } catch (error) {
         console.error(`[SW] 处理角色[${charId}]的独立行动时出错:`, error);
@@ -584,7 +588,6 @@ ${recentContextSummary}
             const groupToUpdate = await db.chats.get(group.id);
             if (groupToUpdate) {
                 if (action.type === 'send_sticker') {
-                      // --- START: MODIFICATION FOR STICKERS ---
                       if (!action.stickerName) {
                           console.warn(`[SW-Group] AI ${actor.name} 尝试发送表情但缺少名称。`, action);
                           continue;

@@ -110,7 +110,7 @@ async function checkAndRunBackgroundSimulation() {
     } catch (error) {
         console.error("后台活动模拟检查失败:", error);
     }
-    }
+}
 async function checkFooterNotifications() {
     const lastView = parseInt(localStorage.getItem('lastMomentsViewTimestamp') || '0');
     const newMomentsCount = await db.xzonePosts.where('timestamp').above(lastView).count();
@@ -146,6 +146,7 @@ async function performPageSetup() {
     await applyGlobalStyles();
     await checkFooterNotifications();
     calcHeaderHeight();
+    await checkAndRunBackgroundSimulation();
 }
 function calcHeaderHeight(){
   const h = document.querySelector('.app-header')?.offsetHeight||56;
@@ -164,13 +165,4 @@ window.addEventListener('pageshow', (event) => {
     }
 });
 
-
-// 在页面加载时，同时执行样式应用和后台模拟启动
-document.addEventListener('DOMContentLoaded', async() => {
-    applyGlobalStyles();
-    checkFooterNotifications();
-});
-
-
 window.addEventListener('resize',calcHeaderHeight);
-document.addEventListener('DOMContentLoaded',calcHeaderHeight);
