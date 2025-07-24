@@ -31,7 +31,7 @@ db.version(29).stores({
 
 // 3. 创建一个广播频道，用于向所有打开的页面发送通知
 const notificationChannel = new BroadcastChannel('xphone_notifications');
-
+let foregroundSimulationIntervalId = null;
 // 4. 监听来自页面的消息（任务委托）
 self.addEventListener('message', (event) => {
     const task = event.data;
@@ -52,12 +52,39 @@ self.addEventListener('message', (event) => {
             break;
         case 'TRIGGER_AI_FRIEND_APPLICATION':
             event.waitUntil(handleAiFriendApplication(task.chatId));
+        case 'START_FOREGROUND_SIMULATION':
+            event.waitUntil(startForegroundSimulation());
+        break;
+        case 'STOP_FOREGROUND_SIMULATION':
+            event.waitUntil(stopForegroundSimulation());    
             break;
     }
 });
 
 // --- 后台任务处理函数 (这些函数现在运行在Service Worker中) ---
+async function startForegroundSimulation() {
+    // 先停止任何可能存在的旧计时器，防止重复启动
+    if (foregroundSimulationIntervalId) {
+        clearInterval(foregroundSimulationIntervalId);
+    }
 
+    // 从数据库读取最新的设置
+    const settings = await db.globalSettings.get('main');
+    if (settings && settings.enableBackgroundActivity) {
+        const intervalSeconds = settings.backgroundActivityInterval || 60;
+        console.log(`[SW] 前台活动模拟已启动，心跳间隔: ${intervalSeconds} 秒`);
+        // 启动新的定时器，并保存其 ID
+        foregroundSimulationIntervalId = setInterval(runActiveSimulationTickForSync, intervalSeconds * 1000);
+    }
+}
+
+function stopForegroundSimulation() {
+    if (foregroundSimulationIntervalId) {
+        clearInterval(foregroundSimulationIntervalId);
+        foregroundSimulationIntervalId = null;
+        console.log("[SW] 前台活动模拟已停止。");
+    }
+}
 /**
  * 从可能包含 markdown 或其他文本的字符串中提取并解析JSON。
  * 此版本能正确处理对象（{}）和数组（[]）。

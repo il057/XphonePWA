@@ -216,7 +216,6 @@ export async function updateRelationshipScore(char1Id, char2Id, scoreChange) {
 
 // --- 后台活动模拟引擎 ---
 
-let simulationIntervalId = null;
 
 /**
  * @description 一个将任务委托给Service Worker的辅助函数。
@@ -281,34 +280,20 @@ export async function triggerAiFriendApplication(chatId) {
  * 启动后台活动模拟器
  */
 export function startActiveSimulation() {
-    // 如果已经有一个在运行，则先停止旧的
-    if (simulationIntervalId) {
-        stopActiveSimulation();
-    }
-    
-    // 从数据库读取最新的设置
-    db.globalSettings.get('main').then(settings => {
-        const intervalSeconds = settings?.backgroundActivityInterval || 60;
-        console.log(`后台活动模拟已启动，心跳间隔: ${intervalSeconds} 秒`);
-        simulationIntervalId = setInterval(runActiveSimulationTick, intervalSeconds * 1000);
-    });
+    console.log("[Engine] 请求 Service Worker 启动前台模拟...");
+    delegateToServiceWorker({ type: 'START_FOREGROUND_SIMULATION' });
 }
-
 /**
  * 停止后台活动模拟器
  */
 export function stopActiveSimulation() {
-    if (simulationIntervalId) {
-        clearInterval(simulationIntervalId);
-        simulationIntervalId = null;
-        console.log("后台活动模拟已停止。");
-    }
+    console.log("[Engine] 请求 Service Worker 停止前台模拟...");
+    delegateToServiceWorker({ type: 'STOP_FOREGROUND_SIMULATION' });
 }
-
 /**
  * 模拟器的“心跳”，每次定时器触发时运行
  * 它会随机挑选一个角色，让他/她进行一次独立思考和行动
- */
+
 export async function runActiveSimulationTick() {
     // If the API is locked by a higher or equal priority task, skip this tick entirely.
     if (apiLock.getCurrentLock() !== 'idle') {
@@ -395,4 +380,4 @@ export async function runActiveSimulationTick() {
     } finally {
         apiLock.release('background_tick');
     }
-}
+} */

@@ -1,8 +1,7 @@
 // settings.js
 // Import the shared database instance from db.js
 import { db} from './db.js';
-import { runActiveSimulationTick } from './simulationEngine.js';
-
+import { startActiveSimulation, stopActiveSimulation } from './simulationEngine.js';
 
 /**
  * 全局样式应用函数
@@ -87,28 +86,22 @@ function shadeColor(color, percent) {
 }
 
 
-async function checkAndRunBackgroundSimulation() {
+/**
+ * 管理前台活动模拟状态的函数
+ * 它会根据数据库的设置来决定是启动还是停止定时器。
+ */
+async function manageSimulationState() {
     try {
         const settings = await db.globalSettings.get('main');
-        
-        // 检查功能是否开启
-        if (!settings || !settings.enableBackgroundActivity) {
-            return;
-        }
-
-        const now = Date.now();
-        const lastTick = settings.lastActiveSimTick || 0;
-        const interval = (settings.backgroundActivityInterval || 60) * 1000; // 转换为毫秒
-
-        // 如果距离上次心跳的时间超过了设定的间隔
-        if (now - lastTick > interval) {
-            // 更新时间戳，防止重复执行
-            await db.globalSettings.update('main', { lastActiveSimTick: now });
-            // 执行心跳任务
-            await runActiveSimulationTick();
+        if (settings && settings.enableBackgroundActivity) {
+            // 如果设置为 true，则请求 Service Worker 启动定时器
+            startActiveSimulation();
+        } else {
+            // 如果设置为 false 或不存在，则请求 Service Worker 停止定时器
+            stopActiveSimulation();
         }
     } catch (error) {
-        console.error("后台活动模拟检查失败:", error);
+        console.error("管理后台活动模拟状态失败:", error);
     }
 }
 async function checkFooterNotifications() {
@@ -146,7 +139,7 @@ async function performPageSetup() {
     await applyGlobalStyles();
     await checkFooterNotifications();
     calcHeaderHeight();
-    await checkAndRunBackgroundSimulation();
+    await manageSimulationState();
 }
 function calcHeaderHeight(){
   const h = document.querySelector('.app-header')?.offsetHeight||56;
