@@ -668,6 +668,11 @@ function convertMessageForAI(msg) {
                  return `[用户分享了链接，标题: "${msg.title}"]`;
             case 'sticker':
                 return `[用户发送了表情，描述是: "${msg.meaning}"]`;
+            case 'waimai_request':
+                return `[用户发起了外卖代付请求，希望你为“${msg.productInfo}”支付¥${Number(msg.amount).toFixed(2)}] {timestamp: ${toMillis(msg.timestamp)}}`;
+            case 'red_packet':
+                const packetType = msg.packetType === 'direct' ? `一个专属红包给 ${msg.receiverName}` : '一个拼手气红包';
+                return `[用户 ${msg.senderName || '我'} 发送了${packetType}，祝福语是：“${msg.greeting || '恭喜发财'}”] {timestamp: ${toMillis(msg.timestamp)}}`;
             default:
                 return msg.content;
         }
@@ -1248,6 +1253,19 @@ async function startListenTogetherSession(playlist) {
 }
 
 
+function getDisplayName(id) {
+    if (id === 'user') {
+        // 使用 activeUserPersona 来获取当前用户的显示名称
+        return activeUserPersona?.name || '我';
+    }
+    // 对于AI角色，从 currentChat 数据中查找
+    if (isGroupChat) {
+        const member = currentChat.members.find(m => m.id === id);
+        return member?.name || id; // 如果在群成员中找不到，则回退显示ID
+    }
+    // 在单聊中，如果不是用户，那就是当前AI角色
+    return currentChat.name || id;
+}
 
 async function getAiResponse( charIdToTrigger = null ) {
     if (charIdToTrigger && typeof charIdToTrigger === 'object' && 'target' in charIdToTrigger) {
@@ -1351,30 +1369,70 @@ async function getAiResponse( charIdToTrigger = null ) {
         
         const albumPhotos = await db.globalAlbum.toArray();
         const availableBackgrounds = albumPhotos.map(p => `- "${p.description}"`).join('\n') || '- (公共相册是空的)';
-
-        const relevantPosts = await db.xzonePosts
-            .where('authorId').anyOf(charId, 'user')
-            .reverse()
-            .limit(3)
-            .toArray();
-
         let postsPromptSection = "";
-        if (relevantPosts.length > 0) {
-            const postsText = relevantPosts.map(p => {
-                const authorName = p.authorId === 'user' ? 'User' : currentChat.name;
-                const selfPostMarker = (p.authorId === charId) ? " [这是你发布的动态]" : "";
-                return `- ${authorName} 发布的动态${selfPostMarker}: "${p.publicText || p.content}"`;
-            }).join('\n');
-            postsPromptSection = `\n\n# 你们最近的动态 (可作为聊天话题):\n${postsText}`;
-        }
 
+        // 检查最新的消息是否是动态提及
+        if (lastMessage && lastMessage.type === 'user_post_mention') {
+            const match = lastMessage.content.match(/动态ID: (\d+)/);
+            if (match && match[1]) {
+                const postId = parseInt(match[1]);
+                const specificPost = await db.xzonePosts.get(postId);
+
+                if (specificPost) {
+                    const authorName = getDisplayName(specificPost.authorId);
+                    const hasLiked = specificPost.likes.includes(charId);
+                    const commentsText = specificPost.comments.length > 0
+                        ? '已有评论:\n' + specificPost.comments.map(c => `    - ${getDisplayName(c.author)}: "${c.text}"`).join('\n')
+                        : '还没有评论。';
+                    
+                    postsPromptSection = `
+# PART 6.2: 你需要优先处理的社交动态
+你刚刚被用户在新动态中@了，这是该动态的详细信息：
+- **动态ID**: ${specificPost.id}
+- **发布者**: ${authorName}
+- **内容**: "${specificPost.publicText || specificPost.content}"
+- **你的点赞状态**: 你 ${hasLiked ? '已经点赞过' : '还没有点赞'}。
+- **评论区**:
+${commentsText}
+
+**你的任务**: 请基于以上详细信息，并结合你的人设和与发布者的关系，决定是否要点赞或发表一条【新的、不重复的】评论。
+`;
+                }
+            }
+        } else {
+            // 如果没有特别提及，则沿用旧的、扫描近期动态的逻辑
+            let authorIdsToScan = [charId, 'user'];
+            if (currentChatForAPI.groupId) {
+                const allCharsInDB = await db.chats.toArray();
+                const groupMates = allCharsInDB.filter(c => c.groupId === currentChatForAPI.groupId && c.id !== charId && !c.isGroup);
+                authorIdsToScan.push(...groupMates.map(m => m.id));
+            }
+            
+            const relevantPosts = await db.xzonePosts
+                .where('authorId').anyOf(authorIdsToScan)
+                .reverse()
+                .limit(5)
+                .toArray();
+
+            if (relevantPosts.length > 0) {
+                const postsText = relevantPosts.map(p => {
+                    const authorName = getDisplayName(p.authorId);
+                    const selfPostMarker = (p.authorId === charId) ? " [这是你发布的动态]" : "";
+                    return `- [Post ID: ${p.id}] by ${authorName}${selfPostMarker}: "${p.publicText || p.content}"`;
+                }).join('\n');
+                postsPromptSection = `\n\n# 你们最近的动态 (可作为聊天话题):\n${postsText}`;
+            }
+        }
          const allChats = await db.chats.toArray();
             let relationsContext = "你的人际关系：\n";
             if (currentChatForAPI.groupId) {
-                // 筛选出同组的其他角色
+                const allChats = await db.chats.toArray();
                 const groupMembers = allChats.filter(c => c.groupId === currentChatForAPI.groupId && c.id !== activeCharId && !c.isGroup);
                 const memberIds = groupMembers.map(m => m.id);
                 
+                const userDisplayName = activeUserPersona?.name || '我';
+                relationsContext += `- 你与 ${userDisplayName} (ID: user) 的关系是 [由AI根据对话判断]。\n`;
+
                 if (memberIds.length > 0) {
                     const otherRelations = await db.relationships
                         .where('sourceCharId').equals(activeCharId)
@@ -1384,15 +1442,15 @@ async function getAiResponse( charIdToTrigger = null ) {
                     otherRelations.forEach(rel => {
                         const targetChar = groupMembers.find(m => m.id === rel.targetCharId);
                         if(targetChar) {
-                            relationsContext += `- 你与 ${targetChar.name} 的关系是 ${rel.type}，好感度 ${rel.score}。\n`;
+                            relationsContext += `- 你与 ${targetChar.name} (ID: ${targetChar.id}) 的关系是 ${rel.type}，好感度 ${rel.score}。\n`;
                         }
                     });
-                } else {
-                    relationsContext += "（你所在的分组暂时没有其他伙伴。）\n";
                 }
             } else {
                 relationsContext += "（你尚未加入任何分组。）\n";
             }
+                    
+        
         
         let systemPrompt;
         if (isGroupChat) {
@@ -1558,11 +1616,23 @@ ${privateChatsContextForPrompt}
 - **适用场景**: 表达开心、疑惑、赞同等抽象情绪，通常是卡通、动图或网络梗图。
 - **【【【特别注意】】】**: 像具体、生动的画面，因为它描述了一个**需要被创造出来的独特场景**，所以它应该被视为一张【图片 (text_image)】，而不是一个表情。
 
- # 如何正确使用“waimai_request”功能:
-1.  这个指令代表【你，AI角色】向【用户】发起一个代付请求。也就是说，你希望【用户帮你付钱】。
-2.  【【【重要】】】: 当【用户】说他们想要某样东西时（例如“我想喝奶茶”），你【绝对不能】使用这个指令。
-3.  只有当【你，AI角色】自己想要某样东西，并且想让【用户】为你付款时，才使用此指令。
-                
+
+# 如何正确处理“外卖代付”功能 (重要心法):
+这是一个双向功能，你必须根据发起人来理解其含义：
+
+1.  **当【用户】发起时 (你收到请求):**
+    * **含义**: 用户希望你为他/她点的外卖付钱。
+    * **感知事件**: 当对话历史中出现 '[用户发起了外卖代付请求...] {timestamp: ...}' 格式的用户消息时，你收到了一个代付请求。
+    * **你的任务**: 根据你的人设、与用户的好感度以及当前情景，决定是“为Ta买单” ('paid') 还是“残忍拒绝” ('rejected')。
+    * **使用工具**: 你【必须】使用 'waimai_response' 指令来回应，并准确填入请求消息的 'target_timestamp'。
+        * **示例**: '{"type": "waimai_response", "target_timestamp": 1721382490123, "decision": "paid"}'
+    * **后续对话**: 在使用指令后，你还【必须】紧接着发送一条或多条 'text' 消息，来对你的决定进行解释或表达，例如“没问题，已经帮你付啦！”或“抱歉，我现在手头有点紧...”。
+
+2.  **当【你】发起时 (你发出请求):**
+    * **含义**: 你自己想点外卖，并希望用户帮你付钱。
+    * **使用工具**: 只有在这种情况下，你才可以使用 'waimai_request' 指令。
+    * **示例**: '{"type": "waimai_request", "productInfo": "一杯咖啡", "amount": 25}'自己想要某样东西，并且想让【用户】为你付款时，才使用此指令。
+           
 **【【【红包规则】】】**:
 - 你应该主动观察聊天记录里出现的新红包。
 - 如果是【拼手气红包】，你可以扮演任何一个角色根据自身性格和发送者的关系去尝试领取。
@@ -1654,7 +1724,7 @@ ${currentChat.settings.aiPersona}
 - **短期目标 (可变)**: [AI可以自己生成和更新的目标，如：'想更了解用户', '解开上次对话中的一个误会', '完成自己的一个创作']
 - **长期理想 (源于人设)**: [相对固定的终极追求，如：'成为最伟大的探险家', '守护与用户的约定', '在音乐上超越对手']
 
-## 3.3 你的社交圈 (Your Social Circle)
+## 3.3 你的社交圈 (你可以在这里找到可@的角色ID)
 ${relationsContext}
 
 
@@ -1691,8 +1761,8 @@ ${relationsContext}
 
 ## 5.3 社交与动态
 - **拍一拍用户**: {"type": "pat_user", "suffix": "(可选)后缀"}
-- **发布文字动态**: {"type": "create_post", "postType": "text", "content": "动态内容"}
-- **发布图片动态**: {"type": "create_post", "postType": "image", "publicText": "(可选)配文", "imageDescription": "图片描述"}
+- **发布文字动态**: {"type": "create_post", "postType": "text", "content": "动态内容", "mentionIds": ["(可选)要@的角色ID"]}
+- **发布图片动态**: {"type": "create_post", "postType": "image", "publicText": "(可选)配文", "imageDescription": "图片描述", "mentionIds": ["(可选)要@的角色ID"]}
 - **点赞动态**: {"type": "like_post", "postId": 12345} (postId 必须是你看到的某条动态的ID) 
 - **评论动态**: {"type": "comment_on_post", "postId": 12345, "commentText": "你的评论内容"}
 
@@ -1751,10 +1821,21 @@ ${musicPromptSection}
 - **适用场景**: 表达开心、疑惑、赞同等抽象情绪，通常是卡通、动图或网络梗图。
 - **【【【特别注意】】】**: 像具体、生动的画面，因为它描述了一个**需要被创造出来的独特场景**，所以它应该被视为一张【图片 (text_image)】，而不是一个表情。
 
- # 如何正确使用“外卖代付”功能:
-1.  这个指令代表【你，AI角色】向【用户】发起一个代付请求。也就是说，你希望【用户帮你付钱】。
-2.  【【【重要】】】: 当【用户】说他们想要某样东西时（例如“我想喝奶茶”），你【绝对不能】使用这个指令。你应该用其他方式回应，比如直接发起【转账】(\`transfer\`)，或者在对话中提议：“我帮你点吧？”
-3.  只有当【你，AI角色】自己想要某样东西，并且想让【用户】为你付款时，才使用此指令。
+# 如何正确处理“外卖代付”功能 (重要心法):
+这是一个双向功能，你必须根据发起人来理解其含义：
+
+1.  **当【用户】发起时 (你收到请求):**
+    * **含义**: 用户希望你为他/她点的外卖付钱。
+    * **感知事件**: 当对话历史中出现 '[用户发起了外卖代付请求...] {timestamp: ...}' 格式的用户消息时，你收到了一个代付请求。
+    * **你的任务**: 根据你的人设、与用户的好感度以及当前情景，决定是“为Ta买单” ('paid') 还是“残忍拒绝” ('rejected')。
+    * **使用工具**: 你【必须】使用 'waimai_response' 指令来回应，并准确填入请求消息的 'target_timestamp'。
+        * **示例**: '{"type": "waimai_response", "target_timestamp": 1721382490123, "decision": "paid"}'
+    * **后续对话**: 在使用指令后，你还【必须】紧接着发送一条或多条 'text' 消息，来对你的决定进行解释或表达，例如“没问题，已经帮你付啦！”或“抱歉，我现在手头有点紧...”。
+
+2.  **当【你】发起时 (你发出请求):**
+    * **含义**: 你自己想点外卖，并希望用户帮你付钱。
+    * **使用工具**: 只有在这种情况下，你才可以使用 'waimai_request' 指令。
+    * **示例**: '{"type": "waimai_request", "productInfo": "一杯咖啡", "amount": 25}'自己想要某样东西，并且想让【用户】为你付款时，才使用此指令。
 
 # 如何处理用户转账:
 1.  **感知事件**: 当对话历史中出现格式为 \`[用户发起了转账...] {timestamp: 1721382490123}\` 的系统提示时，你收到了转账。
@@ -2091,6 +2172,8 @@ ${musicPromptSection}
                             isHidden: true
                         };
                         currentChat.history.push(systemMessage);
+                        renderMessages();
+
                     }
                     break;
                 }
@@ -2227,22 +2310,40 @@ ${musicPromptSection}
                     const postAuthorId = isGroupChat ? actorMember.id : currentChat.id;
                     const postAuthorChat = await db.chats.get(postAuthorId);
                     if (postAuthorChat) {
-                        const postData = { authorId: postAuthorId, timestamp: Date.now(), likes: [], comments: [] };
-                        if (action.postType === 'text' && action.content) {
-                            postData.type = 'text_post';
-                            postData.publicText = action.content; // Use publicText to be consistent
-                            await db.xzonePosts.add(postData);
-                            const postNotice = { type: 'system_message', content: `${actorName} 发布了一条新动态`, timestamp: new Date(messageTimestamp++) };
-                            currentChat.history.push(postNotice);
-                            appendMessage(postNotice);
-                        } else if (action.postType === 'image' && action.imageDescription) {
-                            postData.type = 'image_post';
-                            postData.publicText = action.publicText || '';
-                            postData.imageDescription = action.imageDescription;
-                            await db.xzonePosts.add(postData);
-                            const postNotice = { type: 'system_message', content: `${actorName} 发布了一条新动态`, timestamp: new Date(messageTimestamp++) };
-                            currentChat.history.push(postNotice);
-                            appendMessage(postNotice);
+                        const postData = {
+                            authorId: postAuthorId,
+                            timestamp: Date.now(),
+                            likes: [],
+                            comments: [],
+                            type: action.postType === 'text' ? 'text_post' : 'image_post',
+                            publicText: action.publicText || action.content || '',
+                            imageDescription: action.imageDescription || '',
+                            mentionIds: action.mentionIds || null, // 保存mentionIds
+                        };
+                        const newPostId = await db.xzonePosts.add(postData);
+                        const postNotice = { type: 'system_message', content: `${actorName} 发布了一条新动态`, timestamp: new Date(messageTimestamp++) };
+                        currentChat.history.push(postNotice);
+                        appendMessage(postNotice);
+
+                        // --- 通知被@的角色 ---
+                        if (postData.mentionIds && postData.mentionIds.length > 0) {
+                            for (const mentionedId of postData.mentionIds) {
+                                // AI发动态不需要通知用户，因为用户就在当前聊天里
+                                if (mentionedId === 'user') continue;
+                                
+                                const mentionedChat = await db.chats.get(mentionedId);
+                                if (mentionedChat) {
+                                    const systemMessage = {
+                                        role: 'system',
+                                        type: 'user_post_mention',
+                                        content: `[系统提示：${actorName} 在一条新动态中 @提到了你。请你查看并决定是否需要回应。动态ID: ${newPostId}]`,
+                                        timestamp: new Date(Date.now() + 1),
+                                        isHidden: true
+                                    };
+                                    mentionedChat.history.push(systemMessage);
+                                    await db.chats.put(mentionedChat);
+                                }
+                            }
                         }
                     }
                     break;

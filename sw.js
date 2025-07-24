@@ -144,32 +144,81 @@ async function handleInactiveAiAction(charId) {
                 }
             });
         
-            let recentPostsSummary = "最近没有你关心的动态。";
-            if (visiblePosts.length > 0) {
-                recentPostsSummary = visiblePosts.slice(0, 10).map(p => {
-                    const authorName = p.authorId === 'user' ? (xzoneSettings.nickname || '我') : (allChatsMap.get(p.authorId)?.name || '未知');
-                    const selfPostMarker = (p.authorId === charId) ? " [这是你发布的动态]" : "";
-        
-                    const visibleComments = (p.comments || []).filter(comment => {
-                        const commentAuthor = allChatsMap.get(comment.author);
-                        return comment.author === 'user' || (commentAuthor && commentAuthor.groupId === charGroupId);
-                    });
-                    const commentSummary = (p.comments && p.comments.length > 0)
-                        ? `\n    已有评论:\n` + p.comments.map(c => {
-                            const commentAuthorName = c.author === 'user' ? (xzoneSettings.nickname || '我') : (allChatsMap.get(c.author)?.name || '未知');
-                            return `    - ${commentAuthorName}: "${c.text}"`;
-                        }).join('\n')
-                        : '';
-                    
-                    let relationContext = "";
-                    const relation = p.authorId === 'user' ? userRelation : relationsMap.get(p.authorId);
-                    if (relation) {
-                        relationContext = ` (你和${authorName}是${relation.type}关系, 好感度: ${relation.score})`;
+            let recentPostsSummary = "";
+            const lastMessage = chat.history.length > 0 ? chat.history[chat.history.length - 1] : null;
+
+            // 优先检查最新的消息是否是动态提及
+            if (lastMessage && lastMessage.type === 'user_post_mention') {
+                const match = lastMessage.content.match(/动态ID: (\d+)/);
+                if (match && match[1]) {
+                    const postId = parseInt(match[1]);
+                    const specificPost = await db.xzonePosts.get(postId);
+
+                    if (specificPost) {
+                        const authorChat = await db.chats.get(specificPost.authorId);
+                        const authorName = authorChat ? authorChat.name : '用户';
+                        const hasLiked = specificPost.likes.includes(charId);
+                        const commentsText = specificPost.comments.length > 0
+                            ? '已有评论:\n' + specificPost.comments.map(c => {
+                                const commentAuthor = allChatsArray.find(chat => chat.id === c.author);
+                                return `    - ${commentAuthor ? commentAuthor.name : c.author}: "${c.text}"`;
+                            }).join('\n')
+                            : '还没有评论。';
+                        
+                        recentPostsSummary = `
+        # 决策参考：你需要优先处理的社交动态
+        你刚刚被 ${authorName} 在新动态中@了，这是该动态的详细信息：
+        - **动态ID**: ${specificPost.id}
+        - **发布者**: ${authorName}
+        - **内容**: "${specificPost.publicText || specificPost.content}"
+        - **你的点赞状态**: 你 ${hasLiked ? '已经点赞过' : '还没有点赞'}。
+        - **评论区**:
+        ${commentsText}
+
+        **你的任务**: 请基于以上信息，并结合你的人设和与发布者的关系，决定是否要点赞或发表一条【新的、不重复的】评论。
+        `;
                     }
-                    return `- [Post ID: ${p.id}] by ${authorName}${selfPostMarker}: "${(p.publicText || p.content).substring(0, 40)}..."${relationContext}${commentSummary}`;
-                }).join('\n');
+                }
+            } else {
+                if (visiblePosts.length > 0) {
+                    recentPostsSummary = visiblePosts.slice(0, 10).map(p => {
+                        const authorName = p.authorId === 'user' ? (xzoneSettings.nickname || '我') : (allChatsMap.get(p.authorId)?.name || '未知');
+                        const selfPostMarker = (p.authorId === charId) ? " [这是你发布的动态]" : "";
+
+                        const visibleComments = (p.comments || []).filter(comment => {
+                            const commentAuthor = allChatsMap.get(comment.author);
+                            return comment.author === 'user' || (commentAuthor && commentAuthor.groupId === charGroupId);
+                        });
+                        const commentSummary = (p.comments && p.comments.length > 0)
+                            ? `\n    已有评论:\n` + p.comments.map(c => {
+                                const commentAuthorName = c.author === 'user' ? (xzoneSettings.nickname || '我') : (allChatsMap.get(c.author)?.name || '未知');
+                                return `    - ${commentAuthorName}: "${c.text}"`;
+                            }).join('\n')
+                            : '';
+                        
+                        let relationContext = "";
+                        const relation = p.authorId === 'user' ? userRelation : relationsMap.get(p.authorId);
+                        if (relation) {
+                            relationContext = ` (你和${authorName}是${relation.type}关系, 好感度: ${relation.score})`;
+                        }
+                        return `- [Post ID: ${p.id}] by ${authorName}${selfPostMarker}: "${(p.publicText || p.content).substring(0, 40)}..."${relationContext}${commentSummary}`;
+                    }).join('\n');
+                } else{
+                    recentPostsSummary = "最近没有你关心的动态。";
+                }
             }
-        
+
+            const allCharsInDB = await db.chats.toArray();
+            const groupMates = charGroupId ? allCharsInDB.filter(c => c.groupId === charGroupId && c.id !== charId && !c.isGroup) : [];
+            let mentionableFriendsPrompt = "## 4.5 可@的同伴\n";
+            const userDisplayName = xzoneSettings.nickname || '我';
+            
+            // 始终将用户添加为可@对象
+            mentionableFriendsPrompt += `- ${userDisplayName} (ID: user)\n`;
+
+            if (groupMates.length > 0) {
+                mentionableFriendsPrompt += groupMates.map(m => `- ${m.name} (ID: ${m.id})`).join('\n');
+            }
             const currentTime = new Date().toLocaleString('zh-CN', { dateStyle: 'full', timeStyle: 'short' });
             const userNickname = xzoneSettings.nickname || '我';
             
@@ -198,22 +247,23 @@ async function handleInactiveAiAction(charId) {
                 
                       
                 # 2.1 社交互动指南
-                在点赞或评论动态前，请【务必】参考你和发布者的关系及好感度。
-                - **好感度高**: 可以更热情、更积极地互动。
-                - **好感度低**: 可以更冷淡、无视、甚至发表锐评。
-                - **关系特殊(如对手)**: 做出符合你们关系的行为。
-                - **【【【避免重复铁律】】】**: 在评论前，你【必须】检查“社交圈动态”中该动态下是否已有你的评论。如果已有评论，你【绝对不能】再次评论，除非是回复他人的新评论。严禁发表重复或相似的内容。
+                在点赞或评论动态前，你【务必】参考你和发布者的关系及好感度。
+                - **点赞 (Like)**: 这是一种常见的、低成本的社交认可。当你觉得动态内容不错，但又不想长篇大论评论时，点赞是绝佳的选择。特别是对好感度高的朋友，一个及时的赞能有效维系关系。
+                - **评论 (Comment)**: 当你对动态内容有具体的想法或情绪想要表达时，使用评论。
+                - **避免重复**: 在行动前，你【必须】检查该动态下是否已有你的点赞或评论。如果已有，你【绝对不能】重复操作，除非是回复他人的新评论。
+
                 
-                # 2.2 你的可选行动 (请根据你的人设【选择一项】执行):
-                1.  **主动发消息**: 给用户发一条消息，分享你正在做的事或你的心情。
-                2.  **发布动态**: 分享你的心情或想法到“动态”区。
-                3.  **点赞动态**: 对你看到的某条动态表示赞同。
-                4.  **评论动态**: 对某条动态发表你的看法。
+                # 2.2 你的可选行动 (请根据你的人设【选择一项】最合理的执行):
+                1.  **主动发消息**: 如果你现在有话想对用户说。
+                2.  **发布动态**: 如果你此刻有感而发，想分享给所有人。
+                3.  **与动态互动**: 如果你对看到的某条动态更感兴趣，你可以选择：
+                    a. **点赞动态**: 如果你只是想表达一个简单的支持或认可。
+                    b. **评论动态**: 如果你对此有话要说。
                 
                 # PART 3: 可用后台工具箱 (请选择一项)
                 -   主动发消息给用户: \`[{"type": "text", "content": "你想对用户说的话..."}]\`
-                -   发布文字动态: \`[{"type": "create_post", "postType": "text", "content": "动态的文字内容..."}]\`
-                -   发布图片动态: \`[{"type": "create_post", "postType": "image", "publicText": "(可选)配图文字", "imageDescription": "对图片的详细描述"}]\`
+                -   发布文字动态: \`[{"type": "create_post", "postType": "text", "content": "动态的文字内容...", "mentionIds": ["(可选)要@的角色ID"]}]\`
+                -   发布图片动态: \`[{"type": "create_post", "postType": "image", "publicText": "(可选)配图文字", "imageDescription": "对图片的详细描述", "mentionIds": ["(可选)要@的角色ID"]}]\`
                 -   点赞动态: \`[{"type": "like_post", "postId": 12345}]\` (postId 必须是下面看到的动态ID)
                 -   评论动态: \`[{"type": "comment_on_post", "postId": 12345, "commentText": "你的评论内容"}]\`
                 
@@ -231,6 +281,8 @@ async function handleInactiveAiAction(charId) {
                 ## 4.4 你看到的社交圈动态
                 ${recentPostsSummary}
                 
+                ${mentionableFriendsPrompt}
+
                 # PART 5: 最终输出格式要求
                 你的整个回复必须是一个【单一的JSON对象】，该对象必须包含一个名为 "actions" 的键，其值是一个【只包含一个行动对象的数组】。
                 **正确格式示例:**
@@ -331,7 +383,25 @@ async function handleInactiveAiAction(charId) {
                             };
                             await db.xzonePosts.add(postData);
                             console.log(`[SW] 后台活动: 角色 "${actorName}" 发布了动态`);
-
+                            if (postData.mentionIds && postData.mentionIds.length > 0) {
+                                for (const mentionedId of postData.mentionIds) {
+                                    // 确保不通知用户自己
+                                    if (mentionedId === 'user') continue;
+                                    
+                                    const mentionedChat = await db.chats.get(mentionedId);
+                                    if (mentionedChat) {
+                                        const systemMessage = {
+                                            role: 'system',
+                                            type: 'user_post_mention', // 复用这个类型
+                                            content: `[系统提示：${actorName} 在一条新动态中 @提到了你。请你查看并决定是否需要回应。动态ID: ${newPostId}]`,
+                                            timestamp: new Date(Date.now() + 1),
+                                            isHidden: true
+                                        };
+                                        mentionedChat.history.push(systemMessage);
+                                        await db.chats.put(mentionedChat);
+                                    }
+                                }
+                            }
                             const postAuthorChat = await db.chats.get(charId);
                             if (postAuthorChat) {
                                 const notificationTitle = `${actorName} 发布了新动态`;
@@ -993,7 +1063,7 @@ self.addEventListener('periodicsync', (event) => {
 
 // --- Service Worker 生命周期事件---
 
-const CACHE_NAME = 'xphone-cache-v4';
+const CACHE_NAME = 'xphone-cache-v5';
 const urlsToCache = [
   './',
   './index.html',
@@ -1071,7 +1141,7 @@ self.addEventListener('activate', event => {
     );
 });
 
-sself.addEventListener('fetch', event => {
+self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -1079,8 +1149,26 @@ sself.addEventListener('fetch', event => {
         if (response) {
           return response;
         }
-        // 否则，正常发起网络请求
-        return fetch(event.request);
+        // 否则，正常发起网络请求，并将其添加到缓存中
+        return fetch(event.request).then(
+            function(response) {
+              // 检查我们是否收到了有效的响应
+              if(!response || response.status !== 200 || response.type !== 'basic') {
+                return response;
+              }
+    
+              // 克隆响应。响应是一个流，只能被消费一次。
+              // 我们需要一份给浏览器用，一份给缓存用。
+              var responseToCache = response.clone();
+    
+              caches.open(CACHE_NAME)
+                .then(function(cache) {
+                  cache.put(event.request, responseToCache);
+                });
+    
+              return response;
+            }
+          );
       })
   );
 });

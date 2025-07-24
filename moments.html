@@ -290,7 +290,7 @@
         if (likesContainer) {
             const likedNames = (post.likes || []).map(getDisplayName);
             if (likedNames.length) {
-                likesContainer.textContent = `♥ ${likedNames.join(', ')}`;
+                likesContainer.textContent = `♥\uFE0E ${likedNames.join(', ')}`;
                 likesContainer.classList.remove('hidden');
             } else {
                 likesContainer.classList.add('hidden');
@@ -605,14 +605,14 @@
         document.getElementById('mention-selector-text').textContent = selectedIds.length > 0 ? `已提醒 ${selectedIds.length} 人` : '提醒谁看 (可选)';
     });
 
-    document.getElementById('confirm-create-post').addEventListener('click', async () => {
+document.getElementById('confirm-create-post').addEventListener('click', async () => {
         const publicText = postModal.querySelector('#post-public-text').value.trim();
         const imageDesc = postModal.querySelector('#post-image-description').value.trim();
 
         if (currentPostPayload.type === 'image' && !imageDesc) return alert('图片描述不能为空！');
         if (currentPostPayload.type === 'text' && !publicText) return alert('动态内容不能为空！');
 
-        const newPost = {
+        const newPostData = {
             authorId: CURRENT_USER_ID,
             timestamp: Date.now(),
             likes: [],
@@ -624,7 +624,29 @@
             mentionIds: currentPostPayload.mentionIds || null,
         };
 
-        await db.xzonePosts.add(newPost);
+        // 1. 添加动态并获取新帖子的ID
+        const newPostId = await db.xzonePosts.add(newPostData);
+
+        // 2. 如果有@提及，则发送隐藏的系统提示
+        if (newPostData.mentionIds && newPostData.mentionIds.length > 0) {
+            const mentionedIds = newPostData.mentionIds;
+            const userDisplayName = getDisplayName('user'); // 获取当前用户的显示名
+
+            for (const charId of mentionedIds) {
+                const chat = await db.chats.get(charId);
+                if (chat) {
+                    const systemMessage = {
+                        role: 'system',
+                        type: 'user_post_mention', // 定义一个新的消息类型
+                        content: `[系统提示：用户 ${userDisplayName} 在一条新动态中 @提到了你。请你查看并决定是否需要回应。动态ID: ${newPostId}]`,
+                        timestamp: new Date(Date.now() + 1), // 确保时间戳在后
+                        isHidden: true // 这条消息对用户不可见
+                    };
+                    chat.history.push(systemMessage);
+                    await db.chats.put(chat);
+                }
+            }
+        }
         postModal.style.display = 'none';
         await renderPosts();
     });

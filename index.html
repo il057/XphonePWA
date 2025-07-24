@@ -139,87 +139,86 @@
             </div>
         </footer>
 
-<script type = 'module'>
-    import { db, apiLock, openDatabase } from './db.js'; // 确保引入了 openDatabase
-    import { initializeGlobalState } from './applyGlobalStyles.js';
+        <script type = 'module'>
+            import { db, apiLock } from './db.js';
+            // 注意：不再需要从 simulationEngine.js 导入任何东西
 
-    // 页面加载时，先初始化全局状态（这也会打开数据库）
-    await initializeGlobalState();
-    
-    function updateMainScreenClock() {
-        const now = new Date();
-        const dateOpts = { weekday: 'long', month: 'long', day: 'numeric' };
-        const mainTimeEl = document.getElementById('main-time');
-        const mainDateEl = document.getElementById('main-date');
+            function updateMainScreenClock() {
+                const now = new Date();
+                const dateOpts = { weekday: 'long', month: 'long', day: 'numeric' };
+                const mainTimeEl = document.getElementById('main-time');
+                const mainDateEl = document.getElementById('main-date');
 
-        if (mainTimeEl) mainTimeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
-        if (mainDateEl) mainDateEl.textContent = now.toLocaleDateString('zh-CN', dateOpts);
-    }
-
-    const recordOfflineTime = async () => {
-        // 确保数据库已打开再执行更新
-        const dbInstance = await openDatabase(); 
-        if ((document.visibilityState === 'hidden' || event.type === 'pagehide') && dbInstance) {
-            // 使用 put 方法确保即使 'main' 不存在也能创建
-            await dbInstance.globalSettings.put({ id: 'main', lastOnlineTime: Date.now() });
-            console.log(`页面状态变为 ${event.type}, 记录最后在线时间。`);
-        }
-    };
-
-    /**
-     * 只有在Service Worker完全就绪后才触发离线模拟
-     */
-    async function triggerOfflineSimulationWhenReady() {
-        if (!('serviceWorker' in navigator)) {
-            console.log('此浏览器不支持 Service Worker。');
-            return;
-        }
-        
-        try {
-            // navigator.serviceWorker.ready 是一个Promise，它会等待SW激活
-            const registration = await navigator.serviceWorker.ready;
-            console.log('Service Worker 已就绪, 准备发送离线模拟任务。');
-
-            // 尝试获取API锁
-            if (!(await apiLock.acquire('offline_sim'))) {
-                console.log("无法获取 'offline_sim' 锁，可能已有高优先级任务在运行。");
-                return;
+                if (mainTimeEl) mainTimeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
+                if (mainDateEl) mainDateEl.textContent = now.toLocaleDateString('zh-CN', dateOpts);
             }
 
-            try {
-                // 向已激活的SW发送消息
-                if (registration.active) {
-                    registration.active.postMessage({
-                        type: 'RUN_OFFLINE_SIMULATION'
+            // 记录用户离线时间
+            const recordOfflineTime = async () => {
+                // 确保 db 对象已初始化
+                if (db.isOpen()) {
+                     await db.globalSettings.update('main', { lastOnlineTime: Date.now() });
+                }
+            };
+            document.addEventListener('visibilitychange', recordOfflineTime);
+            window.addEventListener('pagehide', recordOfflineTime);
+
+            /**
+             * 健壮的、向Service Worker派发离线模拟任务的函数
+             */
+            async function triggerOfflineSimulationInSW() {
+                if (!('serviceWorker' in navigator)) {
+                    console.error('浏览器不支持 Service Worker。');
+                    return;
+                }
+
+                try {
+                    // navigator.serviceWorker.ready 确保我们等到SW激活后再继续
+                    const registration = await navigator.serviceWorker.ready;
+
+                    // 尝试获取API锁
+                    if (!(await apiLock.acquire('offline_sim'))) {
+                        console.log("无法获取 'offline_sim' 锁，可能有更高优先级的任务正在运行。");
+                        return;
+                    }
+
+                    try {
+                        // 使用 registration.active 发送消息，这比 controller 更可靠
+                        if (registration.active) {
+                            console.log('正在向 Service Worker 发送离线模拟任务...');
+                            registration.active.postMessage({
+                                type: 'RUN_OFFLINE_SIMULATION'
+                            });
+                        } else {
+                            console.error('Service Worker 已就绪但未激活，无法发送消息。');
+                        }
+                    } finally {
+                        // 无论成功与否，立即释放锁
+                        apiLock.release('offline_sim');
+                    }
+
+                } catch (error) {
+                    console.error('获取 Service Worker 失败:', error);
+                }
+            }
+
+            // 页面加载后的主逻辑
+            document.addEventListener('DOMContentLoaded', () => {
+                updateMainScreenClock();
+                setInterval(updateMainScreenClock, 30000);
+            });
+
+            window.addEventListener('load', () => {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('./sw.js').then(async registration => {
+                        console.log('Service Worker 注册成功, 范围: ', registration.scope);
+                        // 在SW注册成功后，再触发离线模拟检查
+                        await triggerOfflineSimulationInSW();
+                    }).catch(err => {
+                        console.log('Service Worker 注册失败: ', err);
                     });
                 }
-            } finally {
-                // 立即释放锁，因为任务已转交给SW
-                apiLock.release('offline_sim');
-            }
-        } catch (error) {
-            console.error('触发离线模拟失败:', error);
-        }
-    }
-    
-    // --- 启动逻辑 ---
-    updateMainScreenClock();
-    setInterval(updateMainScreenClock, 30000);
-
-    document.addEventListener('visibilitychange', recordOfflineTime);
-    window.addEventListener('pagehide', recordOfflineTime);
-
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js').then(registration => {
-                console.log('ServiceWorker 注册成功，作用域为: ', registration.scope);
-                // 在注册成功后，调用我们新的、更安全的触发函数
-                triggerOfflineSimulationWhenReady();
-            }).catch(err => {
-                console.log('ServiceWorker 注册失败: ', err);
             });
-        });
-    }
-</script>
+        </script>
 </body>
 </html>

@@ -134,12 +134,20 @@
             const memberIds = Array.from(selectedContacts);
             const membersData = (await db.chats.bulkGet(memberIds)).filter(Boolean);
 
+            // 1. 更新成员列表
             group.members = membersData.map(m => ({
                 id: m.id,
                 name: m.name,
                 avatar: m.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg',
                 persona: m.settings?.aiPersona || ''
             }));
+
+            // 2. 重新生成并更新群头像
+            const avatarUrls = membersData
+                .map(m => m.settings?.aiAvatar || 'https://files.catbox.moe/kkll8p.svg');
+            
+            group.settings.groupAvatar = await buildGroupAvatar(avatarUrls);
+
 
             await db.chats.put(group);
             alert("群成员更新成功！");

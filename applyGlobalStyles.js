@@ -1,6 +1,6 @@
 // settings.js
 // Import the shared database instance from db.js
-import { db, isDbReady} from './db.js';
+import { db} from './db.js';
 import { runActiveSimulationTick } from './simulationEngine.js';
 
 
@@ -10,7 +10,6 @@ import { runActiveSimulationTick } from './simulationEngine.js';
  */
 async function applyGlobalStyles() {
     try {
-        await isDbReady();
         const settings = await db.globalSettings.get('main');
 
         // 如果没有设置，则不执行任何操作

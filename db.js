@@ -105,3 +105,19 @@ export const apiLock = {
         }
     }
 };
+
+let openPromise = null;
+export function openDatabase() {
+    if (!openPromise) {
+        console.log("数据库连接尚未建立，正在调用 db.open()...");
+        openPromise = db.open().then(() => {
+            console.log("数据库连接成功。");
+            return db; // 解析Promise并返回db实例
+        }).catch(err => {
+            console.error("打开数据库失败: ", err);
+            openPromise = null; // 在失败时重置，以便下次可以重试
+            return Promise.reject(err);
+        });
+    }
+    return openPromise;
+}
